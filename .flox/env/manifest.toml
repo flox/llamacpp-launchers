@@ -1,0 +1,63 @@
+schema-version = "1.12.0"
+
+[install]
+llamacpp.pkg-path = "flox-labs/llamacpp"
+llamacpp.pkg-group = "llamacpp"
+llamacpp.systems = ["aarch64-darwin", "aarch64-linux", "x86_64-linux"]
+huggingface-hub.pkg-path = "flox/huggingface-hub"
+huggingface-hub.pkg-group = "huggingface-hub"
+claude-code.pkg-path = "flox/claude-code"
+claude-code.pkg-group = "claude-code"
+curl.pkg-path = "curl"
+
+
+[vars]
+
+
+[hook]
+
+
+[profile]
+common = '''
+  export PATH="/home/daedalus/dev/vram-optimizer/target/release:$PATH"
+  source "$FLOX_ENV_PROJECT/bin/llamacpp"
+'''
+
+
+[services]
+[services.llama-server]
+command = '''
+  [ -f "$FLOX_ENV_CACHE/llama-server.env" ] && . "$FLOX_ENV_CACHE/llama-server.env"
+  model_spec=$(cat "$FLOX_ENV_CACHE/llama-server.model" 2>/dev/null)
+  if [ -z "$model_spec" ]; then
+    echo "[llamacpp] No model configured. Run: llamacpp model set <spec>" >&2
+    exit 1
+  fi
+  case "$model_spec" in
+    *.gguf) model_flag="--model" ;;
+    *)      model_flag="--hf-repo" ;;
+  esac
+  exec llama-server \
+    $model_flag "$model_spec" \
+    --host "${LLAMACPP_HOST:-127.0.0.1}" \
+    --port "${LLAMACPP_PORT:-8080}" \
+    --ctx-size "${LLAMACPP_CTX_SIZE:-65536}" \
+    --n-gpu-layers "${LLAMACPP_GPU_LAYERS:-99}" \
+    --api-key "${LLAMACPP_API_KEY:-llamacpp-local}" \
+    --jinja \
+    --flash-attn on
+'''
+
+
+[include]
+
+
+[options]
+systems = [
+  "aarch64-darwin",
+  "aarch64-linux",
+#   "x86_64-darwin",
+  "x86_64-linux",
+]
+# Uncomment to disable CUDA detection.
+# cuda-detection = false

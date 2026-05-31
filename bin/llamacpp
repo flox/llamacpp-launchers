@@ -1,0 +1,600 @@
+#!/usr/bin/env bash
+# llamacpp — wrapper for llama-server model management and harness orchestration
+# Sourced in [profile]; defines the `llamacpp` function with subcommands.
+# Service lifecycle is managed by Flox (flox services start/stop/restart/status/logs).
+#
+# Server config is persisted in $FLOX_ENV_CACHE/llama-server.env and read by the
+# service on every start/restart. Set values via flags (--gpu-layers, --ctx-size, etc.)
+# or env vars at activation time (LLAMACPP_GPU_LAYERS=40 flox activate).
+
+export LLAMACPP_HOST="${LLAMACPP_HOST:-127.0.0.1}"
+export LLAMACPP_PORT="${LLAMACPP_PORT:-8080}"
+export LLAMACPP_MODEL_DIR="${LLAMACPP_MODEL_DIR:-}"
+export LLAMACPP_DEFAULT_QUANT="${LLAMACPP_DEFAULT_QUANT:-Q4_K_M}"
+export LLAMACPP_CTX_SIZE="${LLAMACPP_CTX_SIZE:-65536}"
+export LLAMACPP_GPU_LAYERS="${LLAMACPP_GPU_LAYERS:-99}"
+export LLAMACPP_API_KEY="${LLAMACPP_API_KEY:-llamacpp-local}"
+export LLAMACPP_PREFERRED_ORGS="${LLAMACPP_PREFERRED_ORGS:-unsloth,bartowski,QuantFactory}"
+
+# Track script mtime for auto-re-source
+__LLAMACPP_SCRIPT="${BASH_SOURCE[0]:-${(%):-%x}}"
+__LLAMACPP_MTIME=$(stat -c %Y "$__LLAMACPP_SCRIPT" 2>/dev/null || stat -f %m "$__LLAMACPP_SCRIPT" 2>/dev/null)
+
+__llamacpp_model_dir() {
+  local dir="${LLAMACPP_MODEL_DIR:-${FLOX_ENV_CACHE}/models}"
+  mkdir -p "$dir"
+  printf '%s' "$dir"
+}
+
+__llamacpp_state_file() {
+  printf '%s' "$FLOX_ENV_CACHE/llama-server.model"
+}
+
+__llamacpp_write_env() {
+  local host="$1" port="$2" ctx_size="$3" gpu_layers="$4" api_key="$5"
+  mkdir -p "$FLOX_ENV_CACHE"
+  cat > "$FLOX_ENV_CACHE/llama-server.env" <<EOF
+LLAMACPP_HOST=$host
+LLAMACPP_PORT=$port
+LLAMACPP_CTX_SIZE=$ctx_size
+LLAMACPP_GPU_LAYERS=$gpu_layers
+LLAMACPP_API_KEY=$api_key
+EOF
+}
+
+__llamacpp_model_resolve() {
+  local spec="$1"
+  if [ -z "$spec" ]; then
+    echo "[llamacpp] Error: no model specified" >&2
+    return 1
+  fi
+
+  # Local .gguf file path
+  if [[ "$spec" == *.gguf ]]; then
+    if [ -f "$spec" ]; then
+      printf '%s' "$spec"
+      return 0
+    fi
+    local mdir
+    mdir=$(__llamacpp_model_dir)
+    if [ -f "$mdir/$spec" ]; then
+      printf '%s' "$mdir/$spec"
+      return 0
+    fi
+    echo "[llamacpp] Error: file not found: $spec" >&2
+    return 1
+  fi
+
+  # HF repo format: contains /
+  if [[ "$spec" == */* ]]; then
+    if [[ "$spec" != *:* ]]; then
+      spec="${spec}:${LLAMACPP_DEFAULT_QUANT}"
+    fi
+    printf '%s' "$spec"
+    return 0
+  fi
+
+  # Search term: find best GGUF repo on HuggingFace
+  __llamacpp_model_search_resolve "$spec"
+}
+
+__llamacpp_model_search_resolve() {
+  local query="$1"
+  local preferred_orgs="$LLAMACPP_PREFERRED_ORGS"
+  local results
+
+  results=$(hf models ls --search "$query GGUF" --sort downloads --limit 20 2>/dev/null | tail -n +2)
+  if [ -z "$results" ]; then
+    echo "[llamacpp] No GGUF models found for: $query" >&2
+    return 1
+  fi
+
+  local IFS=','
+  for org in $preferred_orgs; do
+    local match
+    match=$(echo "$results" | awk -F'\t' -v org="$org" '$1 ~ "^"org"/" {print $1; exit}')
+    if [ -n "$match" ]; then
+      printf '%s:%s' "$match" "${LLAMACPP_DEFAULT_QUANT}"
+      return 0
+    fi
+  done
+  unset IFS
+
+  local top
+  top=$(echo "$results" | head -1 | cut -f1)
+  if [ -n "$top" ]; then
+    printf '%s:%s' "$top" "${LLAMACPP_DEFAULT_QUANT}"
+    return 0
+  fi
+
+  echo "[llamacpp] Could not resolve model: $query" >&2
+  return 1
+}
+
+__llamacpp_model_search() {
+  local query="$1"
+  if [ -z "$query" ]; then
+    echo "Usage: llamacpp model search <query>" >&2
+    return 1
+  fi
+  echo "[llamacpp] Searching HuggingFace for GGUF models matching: $query"
+  hf models ls --search "$query GGUF" --sort downloads --limit 15 2>/dev/null
+}
+
+__llamacpp_model_pull() {
+  local spec="$1"
+  if [ -z "$spec" ]; then
+    echo "Usage: llamacpp model pull <repo_id>[:<quant>]" >&2
+    return 1
+  fi
+
+  local repo quant
+  if [[ "$spec" == *:* ]]; then
+    repo="${spec%%:*}"
+    quant="${spec#*:}"
+  else
+    repo="$spec"
+    quant="${LLAMACPP_DEFAULT_QUANT}"
+  fi
+
+  local mdir
+  mdir=$(__llamacpp_model_dir)
+  echo "[llamacpp] Downloading ${repo} (quant: ${quant}) to ${mdir}"
+  hf download "$repo" --include "*${quant}*" --local-dir "$mdir"
+}
+
+__llamacpp_model_list() {
+  local mdir
+  mdir=$(__llamacpp_model_dir)
+  local active
+  active=$(cat "$(__llamacpp_state_file)" 2>/dev/null)
+
+  echo "[llamacpp] Models in ${mdir}:"
+  local found=0
+  while IFS= read -r -d '' f; do
+    local name size
+    name=$(basename "$f")
+    size=$(du -h "$f" | cut -f1)
+    printf '  %s  (%s)\n' "$name" "$size"
+    found=1
+  done < <(find "$mdir" -name '*.gguf' -print0 2>/dev/null)
+
+  if [ "$found" -eq 0 ]; then
+    echo "  (none)"
+  fi
+
+  if [ -n "$active" ]; then
+    echo ""
+    echo "[llamacpp] Active model: $active"
+  fi
+}
+
+__llamacpp_model_remove() {
+  local name="$1"
+  if [ -z "$name" ]; then
+    echo "Usage: llamacpp model remove <filename>" >&2
+    return 1
+  fi
+
+  local mdir
+  mdir=$(__llamacpp_model_dir)
+  local target="$mdir/$name"
+
+  if [ ! -f "$target" ]; then
+    local matches
+    matches=$(find "$mdir" -name "*${name}*" -name '*.gguf' 2>/dev/null)
+    if [ -z "$matches" ]; then
+      echo "[llamacpp] No model found matching: $name" >&2
+      return 1
+    fi
+    local count
+    count=$(echo "$matches" | wc -l)
+    if [ "$count" -gt 1 ]; then
+      echo "[llamacpp] Multiple matches:" >&2
+      echo "$matches" | sed 's/^/  /' >&2
+      echo "[llamacpp] Specify the exact filename." >&2
+      return 1
+    fi
+    target="$matches"
+  fi
+
+  local size
+  size=$(du -h "$target" | cut -f1)
+  rm "$target"
+  echo "[llamacpp] Removed: $(basename "$target") ($size)"
+}
+
+__llamacpp_model_set() {
+  local spec="$1"
+  if [ -z "$spec" ]; then
+    echo "Usage: llamacpp model set <spec>" >&2
+    return 1
+  fi
+
+  local resolved
+  resolved=$(__llamacpp_model_resolve "$spec") || return 1
+  mkdir -p "$FLOX_ENV_CACHE"
+  printf '%s' "$resolved" > "$(__llamacpp_state_file)"
+  __llamacpp_write_env "$LLAMACPP_HOST" "$LLAMACPP_PORT" "$LLAMACPP_CTX_SIZE" "$LLAMACPP_GPU_LAYERS" "$LLAMACPP_API_KEY"
+  echo "[llamacpp] Active model set to: $resolved"
+}
+
+__llamacpp_health_wait() {
+  local host="$1" port="$2" timeout="${3:-120}"
+  local url="http://${host}:${port}/health"
+  local elapsed=0
+
+  echo "[llamacpp] Waiting for llama-server at ${url} ..."
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if curl -sf "$url" >/dev/null 2>&1; then
+      echo "[llamacpp] Server ready."
+      return 0
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+
+  echo "[llamacpp] Timed out after ${timeout}s waiting for server." >&2
+  echo "[llamacpp] Check logs: flox services logs llama-server" >&2
+  return 1
+}
+
+__llamacpp_configure_claude() {
+  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
+  export ANTHROPIC_BASE_URL="http://${host}:${port}"
+  export ANTHROPIC_API_KEY="${api_key}"
+  claude --model "$model_alias" "$@"
+}
+
+__llamacpp_configure_codex() {
+  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
+  export OPENAI_BASE_URL="http://${host}:${port}/v1"
+  export OPENAI_API_KEY="${api_key}"
+  codex --provider openai-compatible --model "$model_alias" "$@"
+}
+
+__llamacpp_configure_opencode() {
+  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
+  export OPENAI_BASE_URL="http://${host}:${port}/v1"
+  export OPENAI_API_KEY="${api_key}"
+  opencode "$@"
+}
+
+__llamacpp_configure_aider() {
+  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
+  export OPENAI_API_BASE="http://${host}:${port}/v1"
+  export OPENAI_API_KEY="${api_key}"
+  aider --model "openai/$model_alias" "$@"
+}
+
+__llamacpp_resolve_cached_gguf() {
+  # Convert HF spec "org/repo:quant" to local llama.cpp cache path if it exists
+  local spec="$1"
+  local org repo quant cache_dir base cached_path
+
+  org="${spec%%/*}"
+  local repo_quant="${spec#*/}"
+  repo="${repo_quant%%:*}"
+  quant="${repo_quant#*:}"
+  base="${repo%-GGUF}"
+  base="${base%-gguf}"
+
+  cache_dir="$HOME/.cache/llama.cpp"
+  cached_path="${cache_dir}/${org}_${repo}_${base}-${quant}.gguf"
+
+  if [ -f "$cached_path" ]; then
+    printf '%s' "$cached_path"
+    return 0
+  fi
+  return 1
+}
+
+__llamacpp_auto_configure() {
+  # Auto-determine gpu_layers and ctx_size using vram-optimizer.
+  # Sets opt_gpu_layers and opt_ctx_size in the calling scope.
+  # Fails gracefully (no-op) if optimizer or nvidia-smi unavailable.
+
+  if ! command -v vram-optimizer >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # Stop any running server to free VRAM before measuring
+  if flox services status llama-server >/dev/null 2>&1; then
+    flox services stop llama-server 2>/dev/null
+    sleep 2
+  fi
+
+  local vram_total vram_used
+  vram_total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null)
+  vram_used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null)
+  if [ -z "$vram_total" ] || [ -z "$vram_used" ]; then
+    return 0
+  fi
+
+  # Resolve model path for the optimizer
+  local optimizer_model="" optimizer_quant=""
+  if [[ "$resolved" == *.gguf ]]; then
+    optimizer_model="$resolved"
+  else
+    # HF spec — check local cache first
+    local cached
+    cached=$(__llamacpp_resolve_cached_gguf "$resolved")
+    if [ -n "$cached" ]; then
+      optimizer_model="$cached"
+    else
+      # Pass HF repo + quant separately
+      optimizer_model="${resolved%%:*}"
+      optimizer_quant="${resolved#*:}"
+    fi
+  fi
+
+  # Build optimizer command
+  local -a optimizer_cmd=(
+    vram-optimizer
+    --engine llamacpp
+    --model "$optimizer_model"
+    --vram-total-mib "$vram_total"
+    --vram-used-mib "$vram_used"
+  )
+  if [ -n "$optimizer_quant" ]; then
+    optimizer_cmd+=(--quant "$optimizer_quant")
+  fi
+
+  # Run optimizer
+  local output exit_code
+  output=$("${optimizer_cmd[@]}" 2>&1)
+  exit_code=$?
+
+  if [ "$exit_code" -ne 0 ]; then
+    echo "[llamacpp] vram-optimizer: $output" >&2
+    echo "[llamacpp] Model may be too large for available VRAM (${vram_total} MiB total, ${vram_used} MiB used)." >&2
+    echo "[llamacpp] Options:" >&2
+    echo "[llamacpp]   --gpu-layers <N> --ctx-size <N>  (manual override, experiment until it loads)" >&2
+    echo "[llamacpp]   --model <repo>:Q3_K_M            (smaller quantization)" >&2
+    echo "[llamacpp]   llamacpp model search <name>     (find a smaller model)" >&2
+    return 1
+  fi
+
+  # Parse output
+  local new_gpu_layers new_ctx_size
+  new_gpu_layers=$(echo "$output" | sed -n 's/^gpu_layers=//p')
+  new_ctx_size=$(echo "$output" | sed -n 's/^ctx_size=//p')
+
+  if [ -n "$new_gpu_layers" ] && [ -n "$new_ctx_size" ]; then
+    opt_gpu_layers="$new_gpu_layers"
+    opt_ctx_size="$new_ctx_size"
+    echo "[llamacpp] Auto-configured: gpu-layers=$opt_gpu_layers ctx-size=$opt_ctx_size"
+  fi
+}
+
+__llamacpp_launch() {
+  local harness="$1"; shift
+  if [ -z "$harness" ]; then
+    echo "Usage: llamacpp launch <harness> --model <spec> [--gpu-layers N] [--ctx-size N] [-- harness args...]" >&2
+    echo "Harnesses: claude, codex, opencode, aider" >&2
+    return 1
+  fi
+
+  case "$harness" in
+    claude|codex|opencode|aider) ;;
+    *)
+      echo "[llamacpp] Unknown harness: $harness" >&2
+      echo "[llamacpp] Supported: claude, codex, opencode, aider" >&2
+      return 1
+      ;;
+  esac
+
+  # Parse all arguments — server config flags are first-class
+  local model_spec=""
+  local opt_host="$LLAMACPP_HOST"
+  local opt_port="$LLAMACPP_PORT"
+  local opt_ctx_size="$LLAMACPP_CTX_SIZE"
+  local opt_gpu_layers="$LLAMACPP_GPU_LAYERS"
+  local opt_api_key="$LLAMACPP_API_KEY"
+  local user_set_gpu_layers=0
+  local user_set_ctx_size=0
+  local harness_args=()
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --model)
+        if [ -z "${2:-}" ]; then echo "[llamacpp] Error: --model requires a value" >&2; return 1; fi
+        model_spec="$2"; shift 2 ;;
+      --gpu-layers|--ngl)
+        if [ -z "${2:-}" ]; then echo "[llamacpp] Error: $1 requires a value" >&2; return 1; fi
+        opt_gpu_layers="$2"; user_set_gpu_layers=1; shift 2 ;;
+      --ctx-size)
+        if [ -z "${2:-}" ]; then echo "[llamacpp] Error: --ctx-size requires a value" >&2; return 1; fi
+        opt_ctx_size="$2"; user_set_ctx_size=1; shift 2 ;;
+      --port)
+        if [ -z "${2:-}" ]; then echo "[llamacpp] Error: --port requires a value" >&2; return 1; fi
+        opt_port="$2"; shift 2 ;;
+      --host)
+        if [ -z "${2:-}" ]; then echo "[llamacpp] Error: --host requires a value" >&2; return 1; fi
+        opt_host="$2"; shift 2 ;;
+      --api-key)
+        if [ -z "${2:-}" ]; then echo "[llamacpp] Error: --api-key requires a value" >&2; return 1; fi
+        opt_api_key="$2"; shift 2 ;;
+      --)
+        shift; harness_args=("$@"); break ;;
+      *)
+        harness_args+=("$1"); shift ;;
+    esac
+  done
+
+  # Resolve model
+  if [ -z "$model_spec" ]; then
+    local current
+    current=$(cat "$(__llamacpp_state_file)" 2>/dev/null)
+    if [ -z "$current" ]; then
+      echo "[llamacpp] Error: no model specified and none currently set." >&2
+      echo "Usage: llamacpp launch $harness --model <spec>" >&2
+      return 1
+    fi
+    echo "[llamacpp] Using current model: $current"
+    model_spec="$current"
+  fi
+
+  local resolved
+  resolved=$(__llamacpp_model_resolve "$model_spec") || return 1
+
+  # Auto-configure gpu_layers and ctx_size when user didn't specify
+  if [ "$user_set_gpu_layers" -eq 0 ] && [ "$user_set_ctx_size" -eq 0 ]; then
+    __llamacpp_auto_configure || return 1
+  fi
+
+  # Read previous state to detect changes
+  local prev_model prev_gpu_layers prev_ctx_size prev_host prev_port prev_api_key
+  prev_model=$(cat "$(__llamacpp_state_file)" 2>/dev/null)
+  if [ -f "$FLOX_ENV_CACHE/llama-server.env" ]; then
+    . "$FLOX_ENV_CACHE/llama-server.env"
+    prev_gpu_layers="$LLAMACPP_GPU_LAYERS"
+    prev_ctx_size="$LLAMACPP_CTX_SIZE"
+    prev_host="$LLAMACPP_HOST"
+    prev_port="$LLAMACPP_PORT"
+    prev_api_key="$LLAMACPP_API_KEY"
+  fi
+
+  # Write model state
+  mkdir -p "$FLOX_ENV_CACHE"
+  printf '%s' "$resolved" > "$(__llamacpp_state_file)"
+
+  # Write server config — this is the single source of truth for the service
+  __llamacpp_write_env "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" "$opt_api_key"
+
+  # Determine if service needs restart
+  local needs_restart=0
+  if [ "$resolved" != "$prev_model" ]; then
+    needs_restart=1
+  elif [ "$opt_gpu_layers" != "$prev_gpu_layers" ]; then
+    needs_restart=1
+  elif [ "$opt_ctx_size" != "$prev_ctx_size" ]; then
+    needs_restart=1
+  elif [ "$opt_host" != "$prev_host" ] || [ "$opt_port" != "$prev_port" ]; then
+    needs_restart=1
+  elif ! curl -sf "http://${opt_host}:${opt_port}/health" >/dev/null 2>&1; then
+    needs_restart=1
+  fi
+
+  if [ "$needs_restart" -eq 1 ]; then
+    echo "[llamacpp] Config: gpu-layers=$opt_gpu_layers ctx-size=$opt_ctx_size port=$opt_port"
+    echo "[llamacpp] Starting llama-server ..."
+    if flox services status llama-server >/dev/null 2>&1; then
+      flox services restart llama-server
+    else
+      flox services start llama-server
+    fi
+    sleep 4
+  fi
+
+  # Wait for server health
+  __llamacpp_health_wait "$opt_host" "$opt_port" 120 || return 1
+
+  # Extract model alias for harness
+  local model_alias
+  model_alias=$(echo "$resolved" | sed 's|.*/||; s|:.*||; s|\.gguf$||')
+
+  echo "[llamacpp] Launching $harness with model: $model_alias"
+  "__llamacpp_configure_${harness}" "$opt_host" "$opt_port" "$opt_api_key" "$model_alias" "${harness_args[@]}"
+}
+
+__llamacpp_help() {
+  cat <<'HELP'
+llamacpp — manage local GGUF models and launch coding harnesses
+
+MODEL MANAGEMENT
+  llamacpp model search <query>     Search HuggingFace for GGUF models
+  llamacpp model pull <spec>        Download a GGUF model
+  llamacpp model list               List downloaded models
+  llamacpp model remove <name>      Delete a downloaded model
+  llamacpp model set <spec>         Set the active model for llama-server
+
+HARNESS LAUNCH
+  llamacpp launch <harness> --model <spec> [options] [-- harness args...]
+
+  Resolves model, writes server config, restarts the service,
+  waits for health, and launches the harness.
+
+  Harnesses: claude, codex, opencode, aider
+
+  Server options (override env vars for this launch):
+    --gpu-layers, --ngl N    GPU layers to offload (default: 99)
+    --ctx-size N             Context window size (default: 65536)
+    --port N                 Server port (default: 8080)
+    --host ADDR              Server bind address (default: 127.0.0.1)
+    --api-key KEY            API key (default: llamacpp-local)
+
+MODEL SPEC FORMATS
+  /path/to/model.gguf               Local GGUF file
+  org/repo-name:Q4_K_M              HuggingFace repo with quantization
+  org/repo-name                     HuggingFace repo (default quant: Q4_K_M)
+  model-name                        Search HuggingFace, auto-select best match
+
+SERVICE MANAGEMENT (use Flox directly)
+  flox services start               Start all services (incl. llama-server)
+  flox services stop llama-server   Stop llama-server
+  flox services restart llama-server Restart with new model
+  flox services status              Show service status
+  flox services logs llama-server   View server logs
+
+ENVIRONMENT VARIABLES (set at activation time)
+  LLAMACPP_HOST              Server bind address (default: 127.0.0.1)
+  LLAMACPP_PORT              Server port (default: 8080)
+  LLAMACPP_MODEL_DIR         Model storage directory (default: $FLOX_ENV_CACHE/models)
+  LLAMACPP_DEFAULT_QUANT     Default quantization (default: Q4_K_M)
+  LLAMACPP_CTX_SIZE          Context size (default: 65536)
+  LLAMACPP_GPU_LAYERS        GPU layers to offload (default: 99)
+  LLAMACPP_API_KEY           API key for server auth (default: llamacpp-local)
+  LLAMACPP_PREFERRED_ORGS    Comma-separated preferred HF orgs for model search
+
+EXAMPLES
+  llamacpp model search qwen3-coder
+  llamacpp launch claude --model qwen3-coder --gpu-layers 25
+  llamacpp launch claude --model unsloth/Qwen3-Coder-Next-GGUF:Q4_K_M --gpu-layers 30 -- --bare
+  llamacpp launch codex --model qwen3-coder
+HELP
+}
+
+llamacpp() {
+  # Auto-re-source if script has been modified since last load
+  local _current_mtime
+  _current_mtime=$(stat -c %Y "$__LLAMACPP_SCRIPT" 2>/dev/null || stat -f %m "$__LLAMACPP_SCRIPT" 2>/dev/null)
+  if [ "$_current_mtime" != "$__LLAMACPP_MTIME" ]; then
+    source "$__LLAMACPP_SCRIPT"
+    llamacpp "$@"
+    return $?
+  fi
+
+  local cmd="${1:-help}"; shift 2>/dev/null || true
+
+  case "$cmd" in
+    model)
+      local subcmd="${1:-}"; shift 2>/dev/null || true
+      case "$subcmd" in
+        search)  __llamacpp_model_search "$@" ;;
+        pull)    __llamacpp_model_pull "$@" ;;
+        list)    __llamacpp_model_list ;;
+        remove)  __llamacpp_model_remove "$@" ;;
+        set)     __llamacpp_model_set "$@" ;;
+        *)
+          echo "Usage: llamacpp model <search|pull|list|remove|set> [args...]" >&2
+          return 1
+          ;;
+      esac
+      ;;
+    launch)
+      __llamacpp_launch "$@"
+      ;;
+    help|--help|-h)
+      __llamacpp_help
+      ;;
+    *)
+      echo "[llamacpp] Unknown command: $cmd" >&2
+      echo "Run 'llamacpp help' for usage." >&2
+      return 1
+      ;;
+  esac
+}
