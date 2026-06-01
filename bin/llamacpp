@@ -7,6 +7,17 @@
 # service on every start/restart. Set values via flags (--gpu-layers, --ctx-size, etc.)
 # or env vars at activation time (LLAMACPP_GPU_LAYERS=40 flox activate).
 
+# Track which server settings were supplied before this script applied defaults.
+# Those values are activation-time overrides; otherwise launch uses persisted config.
+if [ -z "${__LLAMACPP_DEFAULT_MARKERS_SET:-}" ]; then
+  [ "${LLAMACPP_HOST+x}" = x ] && __LLAMACPP_HOST_ACTIVATION_SET=1 || __LLAMACPP_HOST_ACTIVATION_SET=0
+  [ "${LLAMACPP_PORT+x}" = x ] && __LLAMACPP_PORT_ACTIVATION_SET=1 || __LLAMACPP_PORT_ACTIVATION_SET=0
+  [ "${LLAMACPP_CTX_SIZE+x}" = x ] && __LLAMACPP_CTX_SIZE_ACTIVATION_SET=1 || __LLAMACPP_CTX_SIZE_ACTIVATION_SET=0
+  [ "${LLAMACPP_GPU_LAYERS+x}" = x ] && __LLAMACPP_GPU_LAYERS_ACTIVATION_SET=1 || __LLAMACPP_GPU_LAYERS_ACTIVATION_SET=0
+  [ "${LLAMACPP_API_KEY+x}" = x ] && __LLAMACPP_API_KEY_ACTIVATION_SET=1 || __LLAMACPP_API_KEY_ACTIVATION_SET=0
+  __LLAMACPP_DEFAULT_MARKERS_SET=1
+fi
+
 export LLAMACPP_HOST="${LLAMACPP_HOST:-127.0.0.1}"
 export LLAMACPP_PORT="${LLAMACPP_PORT:-8080}"
 export LLAMACPP_PROXY_PORT="${LLAMACPP_PROXY_PORT:-8081}"
@@ -16,6 +27,8 @@ export LLAMACPP_CTX_SIZE="${LLAMACPP_CTX_SIZE:-65536}"
 export LLAMACPP_GPU_LAYERS="${LLAMACPP_GPU_LAYERS:-99}"
 export LLAMACPP_API_KEY="${LLAMACPP_API_KEY:-llamacpp-local}"
 export LLAMACPP_PREFERRED_ORGS="${LLAMACPP_PREFERRED_ORGS:-unsloth,bartowski,QuantFactory}"
+
+__LLAMACPP_SUPPORTED_HARNESSES="claude, codex, opencode, aider, crush, deepseek, gemini"
 
 # Track script mtime for auto-re-source
 __LLAMACPP_SCRIPT="${BASH_SOURCE[0]:-${(%):-%x}}"
@@ -31,18 +44,412 @@ __llamacpp_state_file() {
   printf '%s' "$FLOX_ENV_CACHE/llama-server.model"
 }
 
-__llamacpp_write_env() {
-  local host="$1" port="$2" ctx_size="$3" gpu_layers="$4" api_key="$5"
-  mkdir -p "$FLOX_ENV_CACHE"
-  cat > "$FLOX_ENV_CACHE/llama-server.env" <<EOF
-LLAMACPP_HOST=$host
-LLAMACPP_PORT=$port
-LLAMACPP_CTX_SIZE=$ctx_size
-LLAMACPP_GPU_LAYERS=$gpu_layers
-LLAMACPP_API_KEY=$api_key
-EOF
+__llamacpp_live_state_file() {
+  printf '%s' "$FLOX_ENV_CACHE/llama-server.live.env"
 }
 
+__llamacpp_model_lock_dir() {
+  printf '%s' "$FLOX_ENV_CACHE/model-locks"
+}
+
+__llamacpp_model_lock_file() {
+  # One lock per search query plus requested quant. The checksum keeps filenames
+  # portable even when queries include spaces or shell metacharacters.
+  local query="${1:-}" quant="${2:-}" sum
+  sum=$(printf '%s\n%s' "$query" "$quant" | cksum | awk '{print $1 "-" $2}') || return 1
+  printf '%s/search-%s.env' "$(__llamacpp_model_lock_dir)" "$sum"
+}
+
+__llamacpp_proxy_state_file() {
+  printf '%s' "$FLOX_ENV_CACHE/llamacpp-proxy.state"
+}
+
+__llamacpp_squote() {
+  # Emit a POSIX-shell single-quoted literal without using command substitution
+  # that could alter trailing newlines in the input value.
+  local value="$1"
+  printf "'%s'" "${value//\'/\'\\\'\'}"
+}
+
+__llamacpp_abs_path() {
+  # Canonicalize an existing local path without requiring readlink -f or realpath.
+  # Keep the final pathname component lexical so this also works for ordinary
+  # files on platforms without GNU coreutils.
+  local path="$1" dir base phys_dir
+  dir=$(dirname -- "$path") || return 1
+  base=$(basename -- "$path") || return 1
+  phys_dir=$(cd "$dir" 2>/dev/null && pwd -P) || return 1
+  printf '%s/%s' "$phys_dir" "$base"
+}
+
+
+__llamacpp_cache_get() {
+  # Read one KEY=value assignment from a small state file without executing it.
+  # Supports the exact POSIX single-quoted format emitted by __llamacpp_squote,
+  # including embedded newlines and escaped single quotes, plus legacy unquoted
+  # one-line values from early local cache files.
+  local file="$1" key="$2" outvar="$3"
+  local data="" n i c start k value tail before sq
+
+  [ -f "$file" ] || return 1
+  IFS= read -r -d '' data < "$file" || true
+  n=${#data}
+  i=0
+  sq="'"
+
+  while [ "$i" -lt "$n" ]; do
+    c=${data:i:1}
+    if [ "$c" = $'\n' ]; then
+      i=$((i + 1))
+      continue
+    fi
+
+    start=$i
+    while [ "$i" -lt "$n" ]; do
+      c=${data:i:1}
+      [ "$c" = "=" ] && break
+      [ "$c" = $'\n' ] && return 1
+      i=$((i + 1))
+    done
+    [ "$i" -lt "$n" ] || return 1
+    k=${data:start:i-start}
+    case "$k" in
+      ""|*[!0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_]*)
+        return 1
+        ;;
+    esac
+
+    i=$((i + 1))
+    value=""
+    if [ "$i" -lt "$n" ] && [ "${data:i:1}" = "$sq" ]; then
+      i=$((i + 1))
+      while :; do
+        tail=${data:i}
+        before=${tail%%"$sq"*}
+        if [ "$before" = "$tail" ]; then
+          return 1
+        fi
+        value+="$before"
+        i=$((i + ${#before} + 1))
+        if [ "$i" -lt "$n" ] && [ "${data:i:3}" = "\\''" ]; then
+          value+="$sq"
+          i=$((i + 3))
+          continue
+        fi
+        break
+      done
+    else
+      tail=${data:i}
+      before=${tail%%$'\n'*}
+      value=$before
+      i=$((i + ${#before}))
+    fi
+
+    if [ "$i" -lt "$n" ]; then
+      [ "${data:i:1}" = $'\n' ] || return 1
+      i=$((i + 1))
+    fi
+
+    if [ "$k" = "$key" ]; then
+      printf -v "$outvar" '%s' "$value"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+__llamacpp_json_quote() {
+  # Escape strings for JSON and TOML basic strings. Rejecting shell metacharacters
+  # is not necessary because the generated files never evaluate these strings.
+  local value="$1"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\b'/\\b}
+  value=${value//$'\f'/\\f}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '"%s"' "$value"
+}
+
+__llamacpp_toml_quote() {
+  __llamacpp_json_quote "$1"
+}
+
+__llamacpp_atomic_write_start() {
+  local target="$1"
+  local dir base
+  dir=$(dirname "$target") || return 1
+  base=$(basename "$target") || return 1
+  mkdir -p "$dir" || return 1
+  mktemp "${dir}/${base}.tmp.XXXXXX"
+}
+
+__llamacpp_write_env() {
+  local host="$1" port="$2" ctx_size="$3" gpu_layers="$4" api_key="$5"
+  local env_file="$FLOX_ENV_CACHE/llama-server.env"
+  local tmp rc
+
+  tmp=$(__llamacpp_atomic_write_start "$env_file") || return 1
+  if {
+    printf 'LLAMACPP_HOST='; __llamacpp_squote "$host"; printf '\n'
+    printf 'LLAMACPP_PORT='; __llamacpp_squote "$port"; printf '\n'
+    printf 'LLAMACPP_CTX_SIZE='; __llamacpp_squote "$ctx_size"; printf '\n'
+    printf 'LLAMACPP_GPU_LAYERS='; __llamacpp_squote "$gpu_layers"; printf '\n'
+    printf 'LLAMACPP_API_KEY='; __llamacpp_squote "$api_key"; printf '\n'
+  } > "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$env_file"; then
+    return 0
+  fi
+
+  rc=$?
+  rm -f "$tmp"
+  return "$rc"
+}
+
+__llamacpp_write_model_state() {
+  local resolved="$1"
+  local state_file tmp rc
+  state_file=$(__llamacpp_state_file) || return 1
+
+  tmp=$(__llamacpp_atomic_write_start "$state_file") || return 1
+  if printf '%s' "$resolved" > "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$state_file"; then
+    return 0
+  fi
+
+  rc=$?
+  rm -f "$tmp"
+  return "$rc"
+}
+
+__llamacpp_write_live_state() {
+  # This stamp records the last server inputs that were confirmed against a
+  # running llama-server. Desired input files are not treated as proof that the
+  # live process adopted those inputs.
+  local resolved="$1" host="$2" port="$3" ctx_size="$4" gpu_layers="$5" api_key="$6" server_model="$7"
+  local live_file tmp rc verified_at
+  live_file=$(__llamacpp_live_state_file) || return 1
+  verified_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'unknown')
+
+  tmp=$(__llamacpp_atomic_write_start "$live_file") || return 1
+  if {
+    printf 'LLAMACPP_LIVE_MODEL='; __llamacpp_squote "$resolved"; printf '\n'
+    printf 'LLAMACPP_LIVE_HOST='; __llamacpp_squote "$host"; printf '\n'
+    printf 'LLAMACPP_LIVE_PORT='; __llamacpp_squote "$port"; printf '\n'
+    printf 'LLAMACPP_LIVE_CTX_SIZE='; __llamacpp_squote "$ctx_size"; printf '\n'
+    printf 'LLAMACPP_LIVE_GPU_LAYERS='; __llamacpp_squote "$gpu_layers"; printf '\n'
+    printf 'LLAMACPP_LIVE_API_KEY='; __llamacpp_squote "$api_key"; printf '\n'
+    printf 'LLAMACPP_LIVE_SERVER_MODEL='; __llamacpp_squote "$server_model"; printf '\n'
+    printf 'LLAMACPP_LIVE_VERIFIED_AT='; __llamacpp_squote "$verified_at"; printf '\n'
+  } > "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$live_file"; then
+    return 0
+  fi
+
+  rc=$?
+  rm -f "$tmp"
+  return "$rc"
+}
+
+__llamacpp_read_live_state() {
+  local live_file
+  live_file=$(__llamacpp_live_state_file) || return 1
+  __LLAMACPP_LIVE_MODEL=""
+  __LLAMACPP_LIVE_HOST=""
+  __LLAMACPP_LIVE_PORT=""
+  __LLAMACPP_LIVE_CTX_SIZE=""
+  __LLAMACPP_LIVE_GPU_LAYERS=""
+  __LLAMACPP_LIVE_API_KEY=""
+  __LLAMACPP_LIVE_SERVER_MODEL=""
+
+  [ -f "$live_file" ] || return 1
+
+  __llamacpp_cache_get "$live_file" LLAMACPP_LIVE_MODEL __LLAMACPP_LIVE_MODEL || return 1
+  __llamacpp_cache_get "$live_file" LLAMACPP_LIVE_HOST __LLAMACPP_LIVE_HOST || return 1
+  __llamacpp_cache_get "$live_file" LLAMACPP_LIVE_PORT __LLAMACPP_LIVE_PORT || return 1
+  __llamacpp_cache_get "$live_file" LLAMACPP_LIVE_CTX_SIZE __LLAMACPP_LIVE_CTX_SIZE || return 1
+  __llamacpp_cache_get "$live_file" LLAMACPP_LIVE_GPU_LAYERS __LLAMACPP_LIVE_GPU_LAYERS || return 1
+  __llamacpp_cache_get "$live_file" LLAMACPP_LIVE_API_KEY __LLAMACPP_LIVE_API_KEY || return 1
+  __llamacpp_cache_get "$live_file" LLAMACPP_LIVE_SERVER_MODEL __LLAMACPP_LIVE_SERVER_MODEL || return 1
+}
+
+__llamacpp_live_state_matches() {
+  local resolved="$1" host="$2" port="$3" ctx_size="$4" gpu_layers="$5" api_key="$6"
+  __llamacpp_read_live_state || return 1
+
+  [ "$__LLAMACPP_LIVE_MODEL" = "$resolved" ] || return 1
+  [ "$__LLAMACPP_LIVE_HOST" = "$host" ] || return 1
+  [ "$__LLAMACPP_LIVE_PORT" = "$port" ] || return 1
+  [ "$__LLAMACPP_LIVE_CTX_SIZE" = "$ctx_size" ] || return 1
+  [ "$__LLAMACPP_LIVE_GPU_LAYERS" = "$gpu_layers" ] || return 1
+  [ "$__LLAMACPP_LIVE_API_KEY" = "$api_key" ] || return 1
+}
+
+__llamacpp_read_model_lock() {
+  local query="$1" quant="$2" lock_file
+  __LLAMACPP_LOCKED_MODEL=""
+  lock_file=$(__llamacpp_model_lock_file "$query" "$quant") || return 1
+  [ -f "$lock_file" ] || return 1
+
+  local locked_query="" locked_quant="" locked_model=""
+  __llamacpp_cache_get "$lock_file" LLAMACPP_MODEL_QUERY locked_query || return 1
+  __llamacpp_cache_get "$lock_file" LLAMACPP_MODEL_QUANT locked_quant || return 1
+  __llamacpp_cache_get "$lock_file" LLAMACPP_RESOLVED_MODEL locked_model || return 1
+
+  [ "$locked_query" = "$query" ] || return 1
+  [ "$locked_quant" = "$quant" ] || return 1
+  [ -n "$locked_model" ] || return 1
+  __llamacpp_validate_hf_repo_quant "$locked_model" >/dev/null 2>&1 || return 1
+  __LLAMACPP_LOCKED_MODEL="$locked_model"
+}
+
+__llamacpp_write_model_lock() {
+  local query="$1" quant="$2" resolved="$3"
+  local lock_file tmp rc resolved_at
+  __llamacpp_validate_quant "$quant" || return 1
+  __llamacpp_validate_hf_repo_quant "$resolved" || return 1
+  lock_file=$(__llamacpp_model_lock_file "$query" "$quant") || return 1
+  resolved_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'unknown')
+
+  tmp=$(__llamacpp_atomic_write_start "$lock_file") || return 1
+  if {
+    printf 'LLAMACPP_MODEL_QUERY='; __llamacpp_squote "$query"; printf '\n'
+    printf 'LLAMACPP_MODEL_QUANT='; __llamacpp_squote "$quant"; printf '\n'
+    printf 'LLAMACPP_RESOLVED_MODEL='; __llamacpp_squote "$resolved"; printf '\n'
+    printf 'LLAMACPP_RESOLVED_AT='; __llamacpp_squote "$resolved_at"; printf '\n'
+  } > "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$lock_file"; then
+    return 0
+  fi
+
+  rc=$?
+  rm -f "$tmp"
+  return "$rc"
+}
+
+__llamacpp_model_resolve_search_term() {
+  local query="${1:-}" quant="${2:-$LLAMACPP_DEFAULT_QUANT}" resolved
+  __llamacpp_validate_quant "$quant" || return 1
+
+  if __llamacpp_read_model_lock "$query" "$quant"; then
+    printf '%s' "$__LLAMACPP_LOCKED_MODEL"
+    return 0
+  fi
+
+  resolved=$(__llamacpp_model_search_resolve "$query" "$quant") || return 1
+  __llamacpp_write_model_lock "$query" "$quant" "$resolved" || return 1
+  echo "[llamacpp] Pinned search term '${query}' to: ${resolved}" >&2
+  echo "[llamacpp] Reuse that repo:quant in scripts for reproducible workflow specs." >&2
+  printf '%s' "$resolved"
+}
+
+__llamacpp_model_pin() {
+  local query="${1:-}" quant="$LLAMACPP_DEFAULT_QUANT" resolved
+  if [ -z "$query" ]; then
+    echo "Usage: llamacpp model pin <query> [--quant Q4_K_M]" >&2
+    return 1
+  fi
+  shift || true
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --quant)
+        if [ -z "${2:-}" ]; then echo "[llamacpp] Error: --quant requires a value" >&2; return 1; fi
+        quant="$2"; shift 2 ;;
+      *)
+        echo "[llamacpp] Unknown option for model pin: $1" >&2
+        return 1 ;;
+    esac
+  done
+  __llamacpp_validate_quant "$quant" || return 1
+
+  resolved=$(__llamacpp_model_search_resolve "$query" "$quant") || return 1
+  __llamacpp_write_model_lock "$query" "$quant" "$resolved" || return 1
+  echo "[llamacpp] Pinned ${query} (${quant}) to: ${resolved}"
+  echo "[llamacpp] Use this in scripts: --model ${resolved}"
+}
+
+__llamacpp_model_lock_list() {
+  local lock_dir
+  lock_dir=$(__llamacpp_model_lock_dir) || return 1
+  echo "[llamacpp] Model search locks in ${lock_dir}:"
+  if [ ! -d "$lock_dir" ]; then
+    echo "  (none)"
+    return 0
+  fi
+
+  local found=0 file
+  while IFS= read -r -d '' file; do
+    local lock_query="" lock_quant="" lock_model="" lock_resolved_at=""
+    if __llamacpp_cache_get "$file" LLAMACPP_MODEL_QUERY lock_query 2>/dev/null && \
+       __llamacpp_cache_get "$file" LLAMACPP_RESOLVED_MODEL lock_model 2>/dev/null && \
+       [ -n "$lock_query" ] && [ -n "$lock_model" ]; then
+      __llamacpp_cache_get "$file" LLAMACPP_MODEL_QUANT lock_quant 2>/dev/null || lock_quant="unknown"
+      __llamacpp_cache_get "$file" LLAMACPP_RESOLVED_AT lock_resolved_at 2>/dev/null || lock_resolved_at=""
+      printf '  %s (%s) -> %s' "$lock_query" "${lock_quant:-unknown}" "$lock_model"
+      [ -n "$lock_resolved_at" ] && printf '  [%s]' "$lock_resolved_at"
+      printf '\n'
+      found=1
+    fi
+  done < <(find "$lock_dir" -type f -name 'search-*.env' -print0 2>/dev/null)
+
+  [ "$found" -eq 1 ] || echo "  (none)"
+}
+
+__llamacpp_write_proxy_state() {
+  local host="$1" proxy_port="$2" backend_port="$3" api_key="$4"
+  local state_file tmp rc
+  state_file=$(__llamacpp_proxy_state_file) || return 1
+
+  tmp=$(__llamacpp_atomic_write_start "$state_file") || return 1
+  if {
+    printf 'LLAMACPP_PROXY_HOST='; __llamacpp_squote "$host"; printf '\n'
+    printf 'LLAMACPP_PROXY_PORT='; __llamacpp_squote "$proxy_port"; printf '\n'
+    printf 'LLAMACPP_PROXY_BACKEND_HOST='; __llamacpp_squote "$host"; printf '\n'
+    printf 'LLAMACPP_PROXY_BACKEND_PORT='; __llamacpp_squote "$backend_port"; printf '\n'
+    printf 'LLAMACPP_PROXY_BACKEND_API_KEY='; __llamacpp_squote "$api_key"; printf '\n'
+  } > "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$state_file"; then
+    return 0
+  fi
+
+  rc=$?
+  rm -f "$tmp"
+  return "$rc"
+}
+
+__llamacpp_proxy_state_matches() {
+  local host="$1" proxy_port="$2" backend_port="$3" api_key="$4"
+  local state_file
+  state_file=$(__llamacpp_proxy_state_file) || return 1
+  [ -f "$state_file" ] || return 1
+
+  local proxy_host="" proxy_port_state="" proxy_backend_host="" proxy_backend_port="" proxy_backend_api_key=""
+  __llamacpp_cache_get "$state_file" LLAMACPP_PROXY_HOST proxy_host || return 1
+  __llamacpp_cache_get "$state_file" LLAMACPP_PROXY_PORT proxy_port_state || return 1
+  __llamacpp_cache_get "$state_file" LLAMACPP_PROXY_BACKEND_HOST proxy_backend_host || return 1
+  __llamacpp_cache_get "$state_file" LLAMACPP_PROXY_BACKEND_PORT proxy_backend_port || return 1
+  __llamacpp_cache_get "$state_file" LLAMACPP_PROXY_BACKEND_API_KEY proxy_backend_api_key || return 1
+
+  [ "$proxy_host" = "$host" ] && \
+  [ "$proxy_port_state" = "$proxy_port" ] && \
+  [ "$proxy_backend_host" = "$host" ] && \
+  [ "$proxy_backend_port" = "$backend_port" ] && \
+  [ "$proxy_backend_api_key" = "$api_key" ]
+}
+
+__llamacpp_read_env_config() {
+  local env_file="$FLOX_ENV_CACHE/llama-server.env"
+  __LLAMACPP_PERSISTED_HOST=""
+  __LLAMACPP_PERSISTED_PORT=""
+  __LLAMACPP_PERSISTED_CTX_SIZE=""
+  __LLAMACPP_PERSISTED_GPU_LAYERS=""
+  __LLAMACPP_PERSISTED_API_KEY=""
+
+  [ -f "$env_file" ] || return 1
+
+  __llamacpp_cache_get "$env_file" LLAMACPP_HOST __LLAMACPP_PERSISTED_HOST || return 1
+  __llamacpp_cache_get "$env_file" LLAMACPP_PORT __LLAMACPP_PERSISTED_PORT || return 1
+  __llamacpp_cache_get "$env_file" LLAMACPP_CTX_SIZE __LLAMACPP_PERSISTED_CTX_SIZE || return 1
+  __llamacpp_cache_get "$env_file" LLAMACPP_GPU_LAYERS __LLAMACPP_PERSISTED_GPU_LAYERS || return 1
+  __llamacpp_cache_get "$env_file" LLAMACPP_API_KEY __LLAMACPP_PERSISTED_API_KEY || return 1
+}
 __llamacpp_model_resolve() {
   local spec="$1"
   if [ -z "$spec" ]; then
@@ -53,14 +460,14 @@ __llamacpp_model_resolve() {
   # Local .gguf file path
   if [[ "$spec" == *.gguf ]]; then
     if [ -f "$spec" ]; then
-      printf '%s' "$spec"
-      return 0
+      __llamacpp_abs_path "$spec"
+      return $?
     fi
     local mdir
     mdir=$(__llamacpp_model_dir)
     if [ -f "$mdir/$spec" ]; then
-      printf '%s' "$mdir/$spec"
-      return 0
+      __llamacpp_abs_path "$mdir/$spec"
+      return $?
     fi
     echo "[llamacpp] Error: file not found: $spec" >&2
     return 1
@@ -68,21 +475,30 @@ __llamacpp_model_resolve() {
 
   # HF repo format: contains /
   if [[ "$spec" == */* ]]; then
-    if [[ "$spec" != *:* ]]; then
-      spec="${spec}:${LLAMACPP_DEFAULT_QUANT}"
+    local repo quant
+    if [[ "$spec" == *:* ]]; then
+      repo="${spec%%:*}"
+      quant="${spec#*:}"
+    else
+      repo="$spec"
+      quant="${LLAMACPP_DEFAULT_QUANT}"
     fi
-    printf '%s' "$spec"
+    __llamacpp_validate_hf_repo_id "$repo" || return 1
+    __llamacpp_validate_quant "$quant" || return 1
+    printf '%s' "${repo}:${quant}"
     return 0
   fi
 
-  # Search term: find best GGUF repo on HuggingFace
-  __llamacpp_model_search_resolve "$spec"
+  # Search term: find best GGUF repo on HuggingFace, then lock that
+  # query+quant pair so repeated workflows do not drift with HF search order.
+  __llamacpp_model_resolve_search_term "$spec" "$LLAMACPP_DEFAULT_QUANT"
 }
 
 __llamacpp_model_search_resolve() {
-  local query="$1"
+  local query="$1" quant="${2:-$LLAMACPP_DEFAULT_QUANT}"
   local preferred_orgs="$LLAMACPP_PREFERRED_ORGS"
   local results
+  __llamacpp_validate_quant "$quant" || return 1
 
   results=$(hf models ls --search "$query GGUF" --sort downloads --limit 20 2>/dev/null | tail -n +2)
   if [ -z "$results" ]; then
@@ -94,32 +510,163 @@ __llamacpp_model_search_resolve() {
   for org in $preferred_orgs; do
     local match
     match=$(echo "$results" | awk -F'\t' -v org="$org" '$1 ~ "^"org"/" {print $1; exit}')
-    if [ -n "$match" ]; then
-      printf '%s:%s' "$match" "${LLAMACPP_DEFAULT_QUANT}"
+    if [ -n "$match" ] && __llamacpp_validate_hf_repo_id "$match" >/dev/null 2>&1; then
+      printf '%s:%s' "$match" "$quant"
       return 0
     fi
   done
   unset IFS
 
   local top
-  top=$(echo "$results" | head -1 | cut -f1)
-  if [ -n "$top" ]; then
-    printf '%s:%s' "$top" "${LLAMACPP_DEFAULT_QUANT}"
-    return 0
-  fi
+  while IFS=$'\t' read -r top _; do
+    [ -n "$top" ] || continue
+    if __llamacpp_validate_hf_repo_id "$top" >/dev/null 2>&1; then
+      printf '%s:%s' "$top" "$quant"
+      return 0
+    fi
+  done <<< "$results"
 
-  echo "[llamacpp] Could not resolve model: $query" >&2
+  echo "[llamacpp] Could not resolve a valid org/repo GGUF model for: $query" >&2
   return 1
 }
 
 __llamacpp_model_search() {
-  local query="$1"
+  local query="${1:-}"
   if [ -z "$query" ]; then
     echo "Usage: llamacpp model search <query>" >&2
     return 1
   fi
   echo "[llamacpp] Searching HuggingFace for GGUF models matching: $query"
   hf models ls --search "$query GGUF" --sort downloads --limit 15 2>/dev/null
+  echo ""
+  printf '[llamacpp] Discovery results can change. To lock the current top match: llamacpp model pin %q\n' "$query"
+}
+
+__llamacpp_validate_quant() {
+  local quant="$1"
+  case "$quant" in
+    "")
+      echo "[llamacpp] Error: quant must not be empty" >&2
+      return 1
+      ;;
+    *[!A-Za-z0-9_.-]*)
+      echo "[llamacpp] Error: quant may contain only letters, numbers, dot, underscore, and hyphen: $quant" >&2
+      return 1
+      ;;
+  esac
+}
+
+__llamacpp_validate_hf_repo_id() {
+  # Accept the command contract used by this wrapper: a simple org/repo Hugging
+  # Face model ID. This keeps option-shaped or path-like values from reaching
+  # `hf download` as positional arguments.
+  local repo="$1" org name
+  case "$repo" in
+    "")
+      echo "[llamacpp] Error: repo id must not be empty" >&2
+      return 1
+      ;;
+    -*)
+      echo "[llamacpp] Error: repo id must not start with '-': $repo" >&2
+      return 1
+      ;;
+    */*/*|*\\*|*:*)
+      echo "[llamacpp] Error: repo id must have simple org/repo shape: $repo" >&2
+      return 1
+      ;;
+    */*)
+      ;;
+    *)
+      echo "[llamacpp] Error: repo id must have simple org/repo shape: $repo" >&2
+      return 1
+      ;;
+  esac
+
+  if [[ "$repo" == *" "* || "$repo" == *$'\t'* || "$repo" == *$'\n'* || "$repo" == *$'\r'* ]]; then
+    echo "[llamacpp] Error: repo id must have simple org/repo shape: $repo" >&2
+    return 1
+  fi
+
+  org=${repo%%/*}
+  name=${repo#*/}
+  case "$org" in
+    ""|"."|".."|-*|*[!A-Za-z0-9_.-]*)
+      echo "[llamacpp] Error: invalid repo namespace in repo id: $repo" >&2
+      return 1
+      ;;
+  esac
+  case "$name" in
+    ""|"."|".."|-*|*[!A-Za-z0-9_.-]*)
+      echo "[llamacpp] Error: invalid repo name in repo id: $repo" >&2
+      return 1
+      ;;
+  esac
+}
+
+__llamacpp_validate_hf_repo_quant() {
+  local spec="$1" repo quant
+  case "$spec" in
+    *:*)
+      repo=${spec%%:*}
+      quant=${spec#*:}
+      ;;
+    *)
+      echo "[llamacpp] Error: model spec must be repo:quant: $spec" >&2
+      return 1
+      ;;
+  esac
+  __llamacpp_validate_hf_repo_id "$repo" || return 1
+  __llamacpp_validate_quant "$quant" || return 1
+}
+
+__llamacpp_validate_uint() {
+  local name="$1" value="$2"
+  case "$value" in
+    ""|*[!0-9]*)
+      echo "[llamacpp] Error: $name must be a non-negative integer: $value" >&2
+      return 1
+      ;;
+  esac
+}
+
+__llamacpp_validate_positive_uint() {
+  local name="$1" value="$2" normalized
+  __llamacpp_validate_uint "$name" "$value" || return 1
+
+  normalized="$value"
+  while [ "${normalized#0}" != "$normalized" ]; do
+    normalized=${normalized#0}
+  done
+
+  if [ -z "$normalized" ]; then
+    echo "[llamacpp] Error: $name must be greater than 0: $value" >&2
+    return 1
+  fi
+}
+
+__llamacpp_validate_port() {
+  local name="$1" value="$2" normalized
+  __llamacpp_validate_uint "$name" "$value" || return 1
+
+  # Compare as decimal text to avoid shell-arithmetic overflow surprises for
+  # extremely large digit strings.
+  normalized="$value"
+  while [ "${normalized#0}" != "$normalized" ]; do
+    normalized=${normalized#0}
+  done
+  [ -n "$normalized" ] || normalized=0
+
+  if [ "$normalized" = 0 ] || [ "${#normalized}" -gt 5 ] || { [ "${#normalized}" -eq 5 ] && [[ "$normalized" > "65535" ]]; }; then
+    echo "[llamacpp] Error: $name must be between 1 and 65535: $value" >&2
+    return 1
+  fi
+}
+
+__llamacpp_validate_launch_config() {
+  local port="$1" ctx_size="$2" gpu_layers="$3"
+  __llamacpp_validate_port "--port" "$port" || return 1
+  __llamacpp_validate_positive_uint "--ctx-size" "$ctx_size" || return 1
+  __llamacpp_validate_uint "--gpu-layers" "$gpu_layers" || return 1
 }
 
 __llamacpp_model_pull() {
@@ -137,11 +684,20 @@ __llamacpp_model_pull() {
     repo="$spec"
     quant="${LLAMACPP_DEFAULT_QUANT}"
   fi
+  __llamacpp_validate_hf_repo_id "$repo" || return 1
+  __llamacpp_validate_quant "$quant" || return 1
 
   local mdir
   mdir=$(__llamacpp_model_dir)
   echo "[llamacpp] Downloading ${repo} (quant: ${quant}) to ${mdir}"
-  hf download "$repo" --include "*${quant}*" --local-dir "$mdir"
+  hf download "$repo" \
+    --include "*-${quant}.gguf" \
+    --include "*-${quant}-*.gguf" \
+    --include "*_${quant}.gguf" \
+    --include "*_${quant}_*.gguf" \
+    --include "*.${quant}.gguf" \
+    --include "*.${quant}.*.gguf" \
+    --local-dir "$mdir"
 }
 
 __llamacpp_model_list() {
@@ -177,32 +733,65 @@ __llamacpp_model_remove() {
     return 1
   fi
 
+  # model remove accepts a filename, not a path. Reject path
+  # components before constructing a target path so ../ cannot escape the
+  # model directory and subdirectory names cannot redirect deletion.
+  case "$name" in
+    */*|..|.)
+      echo "[llamacpp] Error: model remove accepts a filename, not a path: $name" >&2
+      return 1
+      ;;
+  esac
+
   local mdir
   mdir=$(__llamacpp_model_dir)
   local target="$mdir/$name"
 
   if [ ! -f "$target" ]; then
-    local matches
-    matches=$(find "$mdir" -name "*${name}*" -name '*.gguf' 2>/dev/null)
-    if [ -z "$matches" ]; then
+    if [ "${#name}" -lt 3 ]; then
+      echo "[llamacpp] Error: fuzzy model remove requires at least 3 characters; use the exact filename: $name" >&2
+      return 1
+    fi
+
+    local -a matches=()
+    local candidate candidate_name
+    while IFS= read -r -d '' candidate; do
+      candidate_name=$(basename "$candidate")
+      if [[ "$candidate_name" == *"$name"* ]]; then
+        matches+=("$candidate")
+      fi
+    done < <(find "$mdir" -type f -name '*.gguf' -print0 2>/dev/null)
+
+    if [ "${#matches[@]}" -eq 0 ]; then
       echo "[llamacpp] No model found matching: $name" >&2
       return 1
     fi
-    local count
-    count=$(echo "$matches" | wc -l)
-    if [ "$count" -gt 1 ]; then
+    if [ "${#matches[@]}" -gt 1 ]; then
       echo "[llamacpp] Multiple matches:" >&2
-      echo "$matches" | sed 's/^/  /' >&2
+      printf '  %s\n' "${matches[@]}" >&2
       echo "[llamacpp] Specify the exact filename." >&2
       return 1
     fi
-    target="$matches"
+    target="${matches[0]}"
+  fi
+
+  local target_abs active active_abs
+  target_abs=$(__llamacpp_abs_path "$target") || return 1
+  active=$(cat "$(__llamacpp_state_file)" 2>/dev/null || true)
+  active_abs="$active"
+  if [ -n "$active" ] && [ -f "$active" ]; then
+    active_abs=$(__llamacpp_abs_path "$active") || active_abs="$active"
+  fi
+  if [ -n "$active_abs" ] && [ "$active_abs" = "$target_abs" ]; then
+    echo "[llamacpp] Error: refusing to delete the active model: $(basename "$target_abs")" >&2
+    echo "[llamacpp] Set another model first." >&2
+    return 1
   fi
 
   local size
-  size=$(du -h "$target" | cut -f1)
-  rm "$target"
-  echo "[llamacpp] Removed: $(basename "$target") ($size)"
+  size=$(du -h "$target_abs" | cut -f1)
+  rm -- "$target_abs"
+  echo "[llamacpp] Removed: $(basename "$target_abs") ($size)"
 }
 
 __llamacpp_model_set() {
@@ -215,8 +804,13 @@ __llamacpp_model_set() {
   local resolved
   resolved=$(__llamacpp_model_resolve "$spec") || return 1
   mkdir -p "$FLOX_ENV_CACHE"
-  printf '%s' "$resolved" > "$(__llamacpp_state_file)"
-  __llamacpp_write_env "$LLAMACPP_HOST" "$LLAMACPP_PORT" "$LLAMACPP_CTX_SIZE" "$LLAMACPP_GPU_LAYERS" "$LLAMACPP_API_KEY"
+  __llamacpp_write_model_state "$resolved" || return 1
+  # model set changes only the active model. Preserve any existing server
+  # config so repeated model changes do not reset ports, sizing, or auth.
+  # Create the env file from activation/default values only for a fresh cache.
+  if [ ! -f "$FLOX_ENV_CACHE/llama-server.env" ]; then
+    __llamacpp_write_env "$LLAMACPP_HOST" "$LLAMACPP_PORT" "$LLAMACPP_CTX_SIZE" "$LLAMACPP_GPU_LAYERS" "$LLAMACPP_API_KEY" || return 1
+  fi
   echo "[llamacpp] Active model set to: $resolved"
 }
 
@@ -240,24 +834,156 @@ __llamacpp_health_wait() {
   return 1
 }
 
+__llamacpp_expected_server_model_id() {
+  # Contract: the llama-server service must expose the exact model input from
+  # llama-server.model through /v1/models. Do not infer correctness from a
+  # basename or harness alias; those can collide across directories or repos.
+  local resolved="$1"
+  printf '%s' "$resolved"
+}
+
+__llamacpp_server_model_is_expected() {
+  local expected="$1" actual="$2"
+  [ "$actual" = "$expected" ]
+}
+
+
+__llamacpp_models_ids() {
+  local body="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    LLAMACPP_MODELS_JSON="$body" python3 -S -c '
+import json, os, sys
+try:
+    doc = json.loads(os.environ["LLAMACPP_MODELS_JSON"])
+except Exception as exc:
+    print(f"[llamacpp] Error: failed to parse /v1/models JSON: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+for item in doc.get("data", []):
+    if isinstance(item, dict):
+        mid = item.get("id")
+        if isinstance(mid, str):
+            print(mid)
+'
+  elif command -v jq >/dev/null 2>&1; then
+    printf '%s' "$body" | jq -r '.data[]? | select(.id | type == "string") | .id'
+  else
+    echo "[llamacpp] Error: python3 or jq is required to parse llama-server /v1/models JSON." >&2
+    return 1
+  fi
+}
+
+
+__llamacpp_models_contains_id() {
+  local body="$1" expected="$2"
+  if command -v python3 >/dev/null 2>&1; then
+    LLAMACPP_MODELS_JSON="$body" LLAMACPP_EXPECTED_MODEL_ID="$expected" python3 -S -c '
+import json, os, sys
+expected = os.environ["LLAMACPP_EXPECTED_MODEL_ID"]
+try:
+    doc = json.loads(os.environ["LLAMACPP_MODELS_JSON"])
+except Exception as exc:
+    print(f"[llamacpp] Error: failed to parse /v1/models JSON: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+for item in doc.get("data", []):
+    if isinstance(item, dict) and item.get("id") == expected:
+        raise SystemExit(0)
+raise SystemExit(1)
+'
+  elif command -v jq >/dev/null 2>&1; then
+    printf '%s' "$body" | jq -e --arg expected "$expected" 'any(.data[]?; .id == $expected)' >/dev/null
+  else
+    echo "[llamacpp] Error: python3 or jq is required to parse llama-server /v1/models JSON." >&2
+    return 2
+  fi
+}
+
+__llamacpp_verify_server_model() {
+  local host="$1" port="$2" api_key="$3" resolved="$4"
+  local body ids id expected_server_model_id
+  expected_server_model_id=$(__llamacpp_expected_server_model_id "$resolved") || return 1
+
+  body=$(curl -sf -H "Authorization: Bearer ${api_key}" "http://${host}:${port}/v1/models" 2>/dev/null) || {
+    echo "[llamacpp] Error: llama-server /v1/models did not respond." >&2
+    return 1
+  }
+
+  if __llamacpp_models_contains_id "$body" "$expected_server_model_id"; then
+    __LLAMACPP_VERIFIED_SERVER_MODEL="$expected_server_model_id"
+    return 0
+  fi
+  local match_status=$?
+  if [ "$match_status" -eq 2 ]; then
+    return 1
+  fi
+
+  if ! ids=$(__llamacpp_models_ids "$body"); then
+    return 1
+  fi
+  if [ -z "$ids" ]; then
+    echo "[llamacpp] Error: llama-server /v1/models returned no model id." >&2
+    return 1
+  fi
+
+  echo "[llamacpp] Error: running llama-server model does not match requested model." >&2
+  echo "[llamacpp] Expected /v1/models id: $expected_server_model_id" >&2
+  echo "[llamacpp] /v1/models returned: $(printf '%s' "$ids" | paste -sd ', ' -)" >&2
+  return 1
+}
+
+__llamacpp_restart_proxy_if_running() {
+  # Refresh an already-running proxy whenever the backend endpoint or auth changes.
+  # Do not start it here; harness-specific setup starts it only when needed.
+  local host="${1:-$LLAMACPP_HOST}"
+  local proxy_port="${2:-$LLAMACPP_PROXY_PORT}"
+  local backend_port="${3:-$LLAMACPP_PORT}"
+  local api_key="${4:-$LLAMACPP_API_KEY}"
+
+  if ! command -v llamacpp-proxy >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if flox services status llamacpp-proxy >/dev/null 2>&1; then
+    echo "[llamacpp] Restarting proxy to pick up backend config ..."
+    flox services restart llamacpp-proxy || return 1
+    sleep 1
+    __llamacpp_write_proxy_state "$host" "$proxy_port" "$backend_port" "$api_key" || return 1
+  fi
+}
+
 __llamacpp_ensure_proxy() {
-  # Ensure the proxy service is running. Harnesses that need translation
-  # (claude, codex, gemini, crush) route through the proxy; others go direct.
+  # Keep the proxy service running and tied to the active backend config.
+  # Harnesses that need translation (claude, codex, gemini, crush) route
+  # through the proxy; others go direct.
+  local host="${1:-$LLAMACPP_HOST}"
+  local proxy_port="${2:-$LLAMACPP_PROXY_PORT}"
+  local backend_port="${3:-$LLAMACPP_PORT}"
+  local api_key="${4:-$LLAMACPP_API_KEY}"
+
   if ! command -v llamacpp-proxy >/dev/null 2>&1; then
     echo "[llamacpp] Warning: llamacpp-proxy not found; harness may fail on tool schemas" >&2
     return 1
   fi
 
-  local proxy_url="http://${LLAMACPP_HOST}:${LLAMACPP_PROXY_PORT}/health"
+  local proxy_url="http://${host}:${proxy_port}/health"
+  local proxy_healthy=0
   if curl -sf "$proxy_url" >/dev/null 2>&1; then
+    proxy_healthy=1
+  fi
+
+  if [ "$proxy_healthy" -eq 1 ] && __llamacpp_proxy_state_matches "$host" "$proxy_port" "$backend_port" "$api_key"; then
     return 0
   fi
 
-  echo "[llamacpp] Starting proxy on port ${LLAMACPP_PROXY_PORT} ..."
-  if flox services status llamacpp-proxy >/dev/null 2>&1; then
-    flox services restart llamacpp-proxy
+  if [ "$proxy_healthy" -eq 1 ]; then
+    echo "[llamacpp] Restarting proxy to pick up backend config ..."
   else
-    flox services start llamacpp-proxy
+    echo "[llamacpp] Starting proxy on port ${proxy_port} ..."
+  fi
+
+  if flox services status llamacpp-proxy >/dev/null 2>&1; then
+    flox services restart llamacpp-proxy || return 1
+  else
+    flox services start llamacpp-proxy || return 1
   fi
   sleep 1
 
@@ -265,23 +991,24 @@ __llamacpp_ensure_proxy() {
     echo "[llamacpp] Warning: proxy failed to start; check: flox services logs llamacpp-proxy" >&2
     return 1
   fi
+  __llamacpp_write_proxy_state "$host" "$proxy_port" "$backend_port" "$api_key" || return 1
   return 0
 }
 
 __llamacpp_configure_claude() {
-  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
-  if __llamacpp_ensure_proxy; then
+  local host="$1" port="$2" api_key="$3" model_id="$4" ctx_size="$5"; shift 5
+  if __llamacpp_ensure_proxy "$host" "$LLAMACPP_PROXY_PORT" "$port" "$api_key"; then
     export ANTHROPIC_BASE_URL="http://${host}:${LLAMACPP_PROXY_PORT}"
   else
     export ANTHROPIC_BASE_URL="http://${host}:${port}"
   fi
   export ANTHROPIC_API_KEY="${api_key}"
-  claude --model "$model_alias" "$@"
+  claude --model "$model_id" --bare "$@"
 }
 
 __llamacpp_configure_codex() {
-  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
-  if ! __llamacpp_ensure_proxy; then
+  local host="$1" port="$2" api_key="$3" model_id="$4" ctx_size="$5"; shift 5
+  if ! __llamacpp_ensure_proxy "$host" "$LLAMACPP_PROXY_PORT" "$port" "$api_key"; then
     echo "[llamacpp] Error: proxy required for Codex (namespace tool translation)" >&2
     return 1
   fi
@@ -292,97 +1019,183 @@ __llamacpp_configure_codex() {
     -c "model_providers.llamacpp.base_url=\"http://${host}:${LLAMACPP_PROXY_PORT}/v1\"" \
     -c "model_providers.llamacpp.wire_api=\"responses\"" \
     -c "web_search=\"disabled\"" \
-    --model "$model_alias" "$@"
+    --model "$model_id" "$@"
 }
 
 __llamacpp_configure_opencode() {
-  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
-  export OPENAI_BASE_URL="http://${host}:${port}/v1"
-  export OPENAI_API_KEY="${api_key}"
-  opencode "$@"
+  local host="$1" port="$2" api_key="$3" model_id="$4" ctx_size="$5"; shift 5
+  local provider_id="llamacpp-local"
+  local opencode_model="${provider_id}/${model_id}"
+  local opencode_root="$FLOX_ENV_CACHE/opencode"
+  local opencode_config_file="$opencode_root/opencode.json"
+  local opencode_config_content
+  local tmp_config rc
+
+  tmp_config=$(__llamacpp_atomic_write_start "$opencode_config_file") || return 1
+  if {
+    printf '{
+'
+    printf '  "$schema": "https://opencode.ai/config.json",
+'
+    printf '  "model": '; __llamacpp_json_quote "$opencode_model"; printf ',
+'
+    printf '  "small_model": '; __llamacpp_json_quote "$opencode_model"; printf ',
+'
+    printf '  "provider": {
+'
+    printf '    '; __llamacpp_json_quote "$provider_id"; printf ': {
+'
+    printf '      "npm": "@ai-sdk/openai-compatible",
+'
+    printf '      "name": "llama-server (Flox local)",
+'
+    printf '      "options": {
+'
+    printf '        "baseURL": '; __llamacpp_json_quote "http://${host}:${port}/v1"; printf ',
+'
+    printf '        "apiKey": '; __llamacpp_json_quote "$api_key"; printf '
+'
+    printf '      },
+'
+    printf '      "models": {
+'
+    printf '        '; __llamacpp_json_quote "$model_id"; printf ': {
+'
+    printf '          "name": '; __llamacpp_json_quote "$model_id"; printf '
+'
+    printf '        }
+'
+    printf '      }
+'
+    printf '    }
+'
+    printf '  },
+'
+    printf '  "enabled_providers": ['; __llamacpp_json_quote "$provider_id"; printf ']
+'
+    printf '}
+'
+  } > "$tmp_config" && chmod 600 "$tmp_config" && mv -f "$tmp_config" "$opencode_config_file"; then
+    opencode_config_content=$(cat "$opencode_config_file") || return 1
+    export OPENAI_BASE_URL="http://${host}:${port}/v1"
+    export OPENAI_API_KEY="${api_key}"
+    OPENCODE_CONFIG="$opencode_config_file" \
+    OPENCODE_CONFIG_CONTENT="$opencode_config_content" \
+    OPENCODE_MODEL="$opencode_model" \
+      opencode --model "$opencode_model" "$@"
+    return $?
+  fi
+  rc=$?
+  rm -f "$tmp_config"
+  return "$rc"
 }
 
 __llamacpp_configure_aider() {
-  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
+  local host="$1" port="$2" api_key="$3" model_id="$4" ctx_size="$5"; shift 5
   export OPENAI_API_BASE="http://${host}:${port}/v1"
   export OPENAI_API_KEY="${api_key}"
-  aider --model "openai/$model_alias" "$@"
+  aider --model "openai/$model_id" "$@"
 }
 
 __llamacpp_configure_deepseek() {
-  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
-  # Query actual model name from llama-server
-  local server_model
-  server_model=$(curl -sf -H "Authorization: Bearer ${api_key}" "http://${host}:${port}/v1/models" 2>/dev/null | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
-  server_model="${server_model:-$model_alias}"
+  local host="$1" port="$2" api_key="$3" model_id="$4" ctx_size="$5"; shift 5
+  local server_model="$model_id"
 
   local config_file="$FLOX_ENV_CACHE/deepseek-config.toml"
-  cat > "$config_file" <<DSEOF
-provider = "openai"
-model = "${server_model}"
-
-[providers.openai]
-base_url = "http://${host}:${port}/v1"
-api_key = "${api_key}"
-DSEOF
-
-  deepseek-tui --config "$config_file" "$@"
+  local tmp_config rc
+  tmp_config=$(__llamacpp_atomic_write_start "$config_file") || return 1
+  if {
+    printf 'provider = '; __llamacpp_toml_quote 'openai'; printf '\n'
+    printf 'model = '; __llamacpp_toml_quote "$server_model"; printf '\n\n'
+    printf '[providers.openai]\n'
+    printf 'base_url = '; __llamacpp_toml_quote "http://${host}:${port}/v1"; printf '\n'
+    printf 'api_key = '; __llamacpp_toml_quote "$api_key"; printf '\n'
+  } > "$tmp_config" && chmod 600 "$tmp_config" && mv -f "$tmp_config" "$config_file"; then
+    deepseek-tui --config "$config_file" "$@"
+    return $?
+  fi
+  rc=$?
+  rm -f "$tmp_config"
+  return "$rc"
 }
 
 __llamacpp_configure_gemini() {
-  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
-  if ! __llamacpp_ensure_proxy; then
+  local host="$1" port="$2" api_key="$3" model_id="$4" ctx_size="$5"; shift 5
+  if ! __llamacpp_ensure_proxy "$host" "$LLAMACPP_PROXY_PORT" "$port" "$api_key"; then
     echo "[llamacpp] Error: proxy required for Gemini CLI (protocol translation)" >&2
     return 1
   fi
   export GOOGLE_GEMINI_BASE_URL="http://${host}:${LLAMACPP_PROXY_PORT}"
   export GEMINI_API_KEY="${api_key}"
+  export GEMINI_MODEL="$model_id"
   export GEMINI_CLI_TRUST_WORKSPACE=true
-  gemini --sandbox=false "$@"
+  gemini --model "$model_id" --sandbox=false "$@"
 }
 
 __llamacpp_configure_crush() {
-  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
+  local host="$1" port="$2" api_key="$3" model_id="$4" ctx_size="$5"; shift 5
   local proxy_port="$port"
-  if __llamacpp_ensure_proxy; then
+  if __llamacpp_ensure_proxy "$host" "$LLAMACPP_PROXY_PORT" "$port" "$api_key"; then
     proxy_port="$LLAMACPP_PROXY_PORT"
   fi
 
-  # Write crush config pointing at our proxy
-  local crush_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/crush"
-  mkdir -p "$crush_config_dir"
-  cat > "$crush_config_dir/crush.json" <<CRUSHEOF
-{
-  "providers": {
-    "llamacpp": {
-      "type": "openai-compat",
-      "base_url": "http://${host}:${proxy_port}/v1",
-      "api_key": "${api_key}",
-      "models": [
-        {
-          "id": "${model_alias}",
-          "name": "${model_alias}",
-          "context_window": 65536
-        }
-      ]
-    }
-  },
-  "models": {
-    "large": {
-      "model": "${model_alias}",
-      "provider": "llamacpp",
-      "max_tokens": 8192
-    },
-    "small": {
-      "model": "${model_alias}",
-      "provider": "llamacpp",
-      "max_tokens": 4096
-    }
-  }
-}
-CRUSHEOF
+  # Keep Crush state scoped to this Flox activation. Crush supports --data-dir
+  # for its per-project runtime data, while CRUSH_GLOBAL_CONFIG redirects the
+  # directory that contains crush.json. This avoids clobbering a user's global
+  # ${XDG_CONFIG_HOME:-$HOME/.config}/crush/crush.json.
+  local crush_root="$FLOX_ENV_CACHE/crush"
+  local crush_config_dir="$crush_root/config"
+  local crush_config_file="$crush_config_dir/crush.json"
+  local crush_data_dir="$crush_root/data"
+  local crush_global_data_dir="$crush_root/global-data"
+  local crush_cache_dir="$crush_root/cache"
+  local tmp_config rc
 
-  crush "$@"
+  mkdir -p "$crush_data_dir" "$crush_global_data_dir" "$crush_cache_dir" || return 1
+
+  tmp_config=$(__llamacpp_atomic_write_start "$crush_config_file") || return 1
+  if {
+    printf '{\n'
+    printf '  "providers": {\n'
+    printf '    "llamacpp": {\n'
+    printf '      "type": "openai-compat",\n'
+    printf '      "base_url": '; __llamacpp_json_quote "http://${host}:${proxy_port}/v1"; printf ',\n'
+    printf '      "api_key": '; __llamacpp_json_quote "$api_key"; printf ',\n'
+    printf '      "models": [\n'
+    printf '        {\n'
+    printf '          "id": '; __llamacpp_json_quote "$model_id"; printf ',\n'
+    printf '          "name": '; __llamacpp_json_quote "$model_id"; printf ',\n'
+    printf '          "context_window": %s\n' "$ctx_size"
+    printf '        }\n'
+    printf '      ]\n'
+    printf '    }\n'
+    printf '  },\n'
+    printf '  "models": {\n'
+    printf '    "large": {\n'
+    printf '      "model": '; __llamacpp_json_quote "$model_id"; printf ',\n'
+    printf '      "provider": "llamacpp",\n'
+    printf '      "max_tokens": 8192\n'
+    printf '    },\n'
+    printf '    "small": {\n'
+    printf '      "model": '; __llamacpp_json_quote "$model_id"; printf ',\n'
+    printf '      "provider": "llamacpp",\n'
+    printf '      "max_tokens": 4096\n'
+    printf '    }\n'
+    printf '  },\n'
+    printf '  "options": {\n'
+    printf '    "data_directory": '; __llamacpp_json_quote "$crush_data_dir"; printf '\n'
+    printf '  }\n'
+    printf '}\n'
+  } > "$tmp_config" && chmod 600 "$tmp_config" && mv -f "$tmp_config" "$crush_config_file"; then
+    CRUSH_GLOBAL_CONFIG="$crush_config_dir" \
+    CRUSH_GLOBAL_DATA="$crush_global_data_dir" \
+    CRUSH_CACHE_DIR="$crush_cache_dir" \
+      crush --data-dir "$crush_data_dir" "$@"
+    return $?
+  fi
+  rc=$?
+  rm -f "$tmp_config"
+  return "$rc"
 }
 
 __llamacpp_resolve_cached_gguf() {
@@ -407,6 +1220,23 @@ __llamacpp_resolve_cached_gguf() {
   return 1
 }
 
+__llamacpp_nvidia_smi_sum_mib() {
+  # nvidia-smi emits one line per visible GPU. Convert that output to one
+  # validated aggregate MiB value before passing it to vram-optimizer.
+  local query="$1"
+  nvidia-smi --query-gpu="$query" --format=csv,noheader,nounits 2>/dev/null | awk '
+    /^[[:space:]]*$/ { next }
+    /^[[:space:]]*[0-9]+[[:space:]]*$/ { sum += $1; count += 1; next }
+    { bad = 1 }
+    END {
+      if (bad || count == 0) {
+        exit 1
+      }
+      printf "%d", sum
+    }
+  '
+}
+
 __llamacpp_auto_configure() {
   # Auto-determine gpu_layers and ctx_size using vram-optimizer.
   # Sets opt_gpu_layers and opt_ctx_size in the calling scope.
@@ -426,9 +1256,12 @@ __llamacpp_auto_configure() {
   fi
 
   local vram_total vram_used
-  vram_total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null)
-  vram_used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null)
+  vram_total=$(__llamacpp_nvidia_smi_sum_mib memory.total) || return 0
+  vram_used=$(__llamacpp_nvidia_smi_sum_mib memory.used) || return 0
   if [ -z "$vram_total" ] || [ -z "$vram_used" ]; then
+    return 0
+  fi
+  if [ "$vram_total" -le 0 ] || [ "$vram_used" -gt "$vram_total" ]; then
     return 0
   fi
 
@@ -493,7 +1326,7 @@ __llamacpp_launch() {
   local harness="$1"; shift
   if [ -z "$harness" ]; then
     echo "Usage: llamacpp launch <harness> --model <spec> [--gpu-layers N] [--ctx-size N] [-- harness args...]" >&2
-    echo "Harnesses: claude, codex, opencode, aider, crush, deepseek, gemini" >&2
+    echo "Harnesses: $__LLAMACPP_SUPPORTED_HARNESSES" >&2
     return 1
   fi
 
@@ -501,18 +1334,35 @@ __llamacpp_launch() {
     claude|codex|opencode|aider|crush|deepseek|gemini) ;;
     *)
       echo "[llamacpp] Unknown harness: $harness" >&2
-      echo "[llamacpp] Supported: claude, codex, opencode, aider" >&2
+      echo "[llamacpp] Supported: $__LLAMACPP_SUPPORTED_HARNESSES" >&2
       return 1
       ;;
   esac
 
-  # Parse all arguments — server config flags are first-class
+  # Parse all arguments; persisted config is the baseline, activation-time
+  # overrides apply next, and CLI flags take final precedence.
   local model_spec=""
-  local opt_host="$LLAMACPP_HOST"
-  local opt_port="$LLAMACPP_PORT"
-  local opt_ctx_size="$LLAMACPP_CTX_SIZE"
-  local opt_gpu_layers="$LLAMACPP_GPU_LAYERS"
-  local opt_api_key="$LLAMACPP_API_KEY"
+  local persisted_host="" persisted_port="" persisted_ctx_size="" persisted_gpu_layers="" persisted_api_key=""
+  if __llamacpp_read_env_config 2>/dev/null; then
+    persisted_host="$__LLAMACPP_PERSISTED_HOST"
+    persisted_port="$__LLAMACPP_PERSISTED_PORT"
+    persisted_ctx_size="$__LLAMACPP_PERSISTED_CTX_SIZE"
+    persisted_gpu_layers="$__LLAMACPP_PERSISTED_GPU_LAYERS"
+    persisted_api_key="$__LLAMACPP_PERSISTED_API_KEY"
+  fi
+
+  local opt_host="${persisted_host:-$LLAMACPP_HOST}"
+  local opt_port="${persisted_port:-$LLAMACPP_PORT}"
+  local opt_ctx_size="${persisted_ctx_size:-$LLAMACPP_CTX_SIZE}"
+  local opt_gpu_layers="${persisted_gpu_layers:-$LLAMACPP_GPU_LAYERS}"
+  local opt_api_key="${persisted_api_key:-$LLAMACPP_API_KEY}"
+
+  [ "${__LLAMACPP_HOST_ACTIVATION_SET:-0}" -eq 1 ] && opt_host="$LLAMACPP_HOST"
+  [ "${__LLAMACPP_PORT_ACTIVATION_SET:-0}" -eq 1 ] && opt_port="$LLAMACPP_PORT"
+  [ "${__LLAMACPP_CTX_SIZE_ACTIVATION_SET:-0}" -eq 1 ] && opt_ctx_size="$LLAMACPP_CTX_SIZE"
+  [ "${__LLAMACPP_GPU_LAYERS_ACTIVATION_SET:-0}" -eq 1 ] && opt_gpu_layers="$LLAMACPP_GPU_LAYERS"
+  [ "${__LLAMACPP_API_KEY_ACTIVATION_SET:-0}" -eq 1 ] && opt_api_key="$LLAMACPP_API_KEY"
+
   local user_set_gpu_layers=0
   local user_set_ctx_size=0
   local opt_context_priority="balanced"
@@ -545,9 +1395,17 @@ __llamacpp_launch() {
       --)
         shift; harness_args=("$@"); break ;;
       *)
+        if [[ "$1" == -* ]]; then
+          echo "[llamacpp] Unknown launch option: $1" >&2
+          echo "[llamacpp] Pass harness flags after --" >&2
+          return 1
+        fi
         harness_args+=("$1"); shift ;;
     esac
   done
+
+  # Reject invalid effective numeric config before resolving models or writing state.
+  __llamacpp_validate_launch_config "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" || return 1
 
   # Resolve model
   if [ -z "$model_spec" ]; then
@@ -565,64 +1423,79 @@ __llamacpp_launch() {
   local resolved
   resolved=$(__llamacpp_model_resolve "$model_spec") || return 1
 
-  # Auto-configure gpu_layers and ctx_size when user didn't specify
-  if [ "$user_set_gpu_layers" -eq 0 ] && [ "$user_set_ctx_size" -eq 0 ]; then
+  # Auto-configure gpu_layers and ctx_size only when neither persisted config,
+  # activation-time overrides, nor CLI flags supplied both sizing values.
+  if [ "$user_set_gpu_layers" -eq 0 ] && [ "$user_set_ctx_size" -eq 0 ] \
+     && [ -z "$persisted_gpu_layers" ] && [ -z "$persisted_ctx_size" ] \
+     && [ "${__LLAMACPP_GPU_LAYERS_ACTIVATION_SET:-0}" -eq 0 ] \
+     && [ "${__LLAMACPP_CTX_SIZE_ACTIVATION_SET:-0}" -eq 0 ]; then
     __llamacpp_auto_configure || return 1
+    __llamacpp_validate_launch_config "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" || return 1
   fi
 
-  # Read previous state to detect changes
-  local prev_model prev_gpu_layers prev_ctx_size prev_host prev_port prev_api_key
-  prev_model=$(cat "$(__llamacpp_state_file)" 2>/dev/null)
-  if [ -f "$FLOX_ENV_CACHE/llama-server.env" ]; then
-    . "$FLOX_ENV_CACHE/llama-server.env"
-    prev_gpu_layers="$LLAMACPP_GPU_LAYERS"
-    prev_ctx_size="$LLAMACPP_CTX_SIZE"
-    prev_host="$LLAMACPP_HOST"
-    prev_port="$LLAMACPP_PORT"
-    prev_api_key="$LLAMACPP_API_KEY"
+  # Read the last confirmed live server inputs. Desired model/config files are
+  # service inputs only; they are intentionally not treated as proof that a
+  # running process adopted those inputs.
+  local live_model="" live_gpu_layers="" live_ctx_size="" live_host="" live_port="" live_api_key=""
+  if __llamacpp_read_live_state 2>/dev/null; then
+    live_model="$__LLAMACPP_LIVE_MODEL"
+    live_host="$__LLAMACPP_LIVE_HOST"
+    live_port="$__LLAMACPP_LIVE_PORT"
+    live_ctx_size="$__LLAMACPP_LIVE_CTX_SIZE"
+    live_gpu_layers="$__LLAMACPP_LIVE_GPU_LAYERS"
+    live_api_key="$__LLAMACPP_LIVE_API_KEY"
   fi
 
-  # Write model state
+  # Write desired service inputs before start/restart so the service can read
+  # them. The live stamp below is updated only after the running server is
+  # checked against those inputs.
   mkdir -p "$FLOX_ENV_CACHE"
-  printf '%s' "$resolved" > "$(__llamacpp_state_file)"
+  __llamacpp_write_model_state "$resolved" || return 1
+  __llamacpp_write_env "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" "$opt_api_key" || return 1
 
-  # Write server config — this is the single source of truth for the service
-  __llamacpp_write_env "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" "$opt_api_key"
-
-  # Determine if service needs restart
   local needs_restart=0
-  if [ "$resolved" != "$prev_model" ]; then
-    needs_restart=1
-  elif [ "$opt_gpu_layers" != "$prev_gpu_layers" ]; then
-    needs_restart=1
-  elif [ "$opt_ctx_size" != "$prev_ctx_size" ]; then
-    needs_restart=1
-  elif [ "$opt_host" != "$prev_host" ] || [ "$opt_port" != "$prev_port" ]; then
+  local needs_proxy_restart=0
+  __LLAMACPP_VERIFIED_SERVER_MODEL=""
+
+  if ! __llamacpp_live_state_matches "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" "$opt_api_key"; then
     needs_restart=1
   elif ! curl -sf "http://${opt_host}:${opt_port}/health" >/dev/null 2>&1; then
     needs_restart=1
+  elif ! __llamacpp_verify_server_model "$opt_host" "$opt_port" "$opt_api_key" "$resolved"; then
+    needs_restart=1
+  fi
+
+  if [ "$opt_host" != "$live_host" ] || [ "$opt_port" != "$live_port" ] || [ "$opt_api_key" != "$live_api_key" ]; then
+    needs_proxy_restart=1
   fi
 
   if [ "$needs_restart" -eq 1 ]; then
     echo "[llamacpp] Config: gpu-layers=$opt_gpu_layers ctx-size=$opt_ctx_size port=$opt_port"
     echo "[llamacpp] Starting llama-server ..."
     if flox services status llama-server >/dev/null 2>&1; then
-      flox services restart llama-server
+      flox services restart llama-server || return 1
     else
-      flox services start llama-server
+      flox services start llama-server || return 1
     fi
-    sleep 4
   fi
 
-  # Wait for server health
   __llamacpp_health_wait "$opt_host" "$opt_port" 120 || return 1
+  __llamacpp_verify_server_model "$opt_host" "$opt_port" "$opt_api_key" "$resolved" || return 1
+  __llamacpp_write_live_state "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" "$opt_api_key" "$__LLAMACPP_VERIFIED_SERVER_MODEL" || return 1
 
-  # Extract model alias for harness
-  local model_alias
-  model_alias=$(echo "$resolved" | sed 's|.*/||; s|:.*||; s|\.gguf$||')
+  if [ "$needs_proxy_restart" -eq 1 ]; then
+    __llamacpp_restart_proxy_if_running "$opt_host" "$LLAMACPP_PROXY_PORT" "$opt_port" "$opt_api_key" || return 1
+  fi
 
-  echo "[llamacpp] Launching $harness with model: $model_alias"
-  "__llamacpp_configure_${harness}" "$opt_host" "$opt_port" "$opt_api_key" "$model_alias" "${harness_args[@]}"
+  # Harnesses must use the exact model ID that /v1/models verified.
+  local verified_model_id="$__LLAMACPP_VERIFIED_SERVER_MODEL"
+  if [ -z "$verified_model_id" ]; then
+    echo "[llamacpp] Error: verified server model id is empty after /v1/models check." >&2
+    return 1
+  fi
+
+  echo "[llamacpp] Launching $harness with verified model: $verified_model_id"
+  "__llamacpp_configure_${harness}" "$opt_host" "$opt_port" "$opt_api_key" "$verified_model_id" "$opt_ctx_size" "${harness_args[@]}"
 }
 
 __llamacpp_help() {
@@ -631,9 +1504,11 @@ llamacpp — manage local GGUF models and launch coding harnesses
 
 MODEL MANAGEMENT
   llamacpp model search <query>     Search HuggingFace for GGUF models
+  llamacpp model pin <query>        Resolve and lock a search query to repo:quant
+  llamacpp model locks              List Flox-scoped search locks
   llamacpp model pull <spec>        Download a GGUF model
   llamacpp model list               List downloaded models
-  llamacpp model remove <name>      Delete a downloaded model
+  llamacpp model remove <filename>  Delete a downloaded model
   llamacpp model set <spec>         Set the active model for llama-server
 
 HARNESS LAUNCH
@@ -642,20 +1517,20 @@ HARNESS LAUNCH
   Resolves model, writes server config, restarts the service,
   waits for health, and launches the harness.
 
-  Harnesses: claude, codex, opencode, aider, crush
+  Harnesses: claude, codex, opencode, aider, crush, deepseek, gemini
 
-  Server options (override env vars for this launch):
-    --gpu-layers, --ngl N    GPU layers to offload (default: 99)
-    --ctx-size N             Context window size (default: 65536)
-    --port N                 Server port (default: 8080)
-    --host ADDR              Server bind address (default: 127.0.0.1)
-    --api-key KEY            API key (default: llamacpp-local)
+  Server options (override persisted config and activation env vars):
+    --gpu-layers, --ngl N    GPU layers to offload (built-in default: 99)
+    --ctx-size N             Context window size (built-in default: 65536)
+    --port N                 Server port (built-in default: 8080)
+    --host ADDR              Server bind address (built-in default: 127.0.0.1)
+    --api-key KEY            API key (built-in default: llamacpp-local)
 
 MODEL SPEC FORMATS
   /path/to/model.gguf               Local GGUF file
   org/repo-name:Q4_K_M              HuggingFace repo with quantization
   org/repo-name                     HuggingFace repo (default quant: Q4_K_M)
-  model-name                        Search HuggingFace, auto-select best match
+  model-name                        Search HuggingFace once, then reuse a Flox-scoped lock
 
 SERVICE MANAGEMENT (use Flox directly)
   flox services start               Start all services (incl. llama-server)
@@ -676,9 +1551,10 @@ ENVIRONMENT VARIABLES (set at activation time)
 
 EXAMPLES
   llamacpp model search qwen3-coder
-  llamacpp launch claude --model qwen3-coder --gpu-layers 25
+  llamacpp model pin qwen3-coder
+  llamacpp launch claude --model <repo>:<quant> --gpu-layers 25
   llamacpp launch claude --model unsloth/Qwen3-Coder-Next-GGUF:Q4_K_M --gpu-layers 30 -- --bare
-  llamacpp launch codex --model qwen3-coder
+  llamacpp launch codex --model <repo>:<quant>
 HELP
 }
 
@@ -699,12 +1575,14 @@ llamacpp() {
       local subcmd="${1:-}"; shift 2>/dev/null || true
       case "$subcmd" in
         search)  __llamacpp_model_search "$@" ;;
+        pin)     __llamacpp_model_pin "$@" ;;
+        locks)   __llamacpp_model_lock_list ;;
         pull)    __llamacpp_model_pull "$@" ;;
         list)    __llamacpp_model_list ;;
         remove)  __llamacpp_model_remove "$@" ;;
         set)     __llamacpp_model_set "$@" ;;
         *)
-          echo "Usage: llamacpp model <search|pull|list|remove|set> [args...]" >&2
+          echo "Usage: llamacpp model <search|pin|locks|pull|list|remove|set> [args...]" >&2
           return 1
           ;;
       esac
