@@ -3,6 +3,9 @@
   "manifest": {
     "schema-version": "1.12.0",
     "install": {
+      "bat": {
+        "pkg-path": "bat"
+      },
       "claude-code": {
         "pkg-path": "flox/claude-code",
         "pkg-group": "claude-code"
@@ -40,7 +43,7 @@
         ]
       },
       "llamacpp-launchers": {
-        "store-path": "/nix/store/q1srafq53f8p831pbi2c27lqjvy6qkhb-llamacpp-launchers-0.4.2"
+        "store-path": "/nix/store/wmq9k93bqv04k9kj8mvrnksfysbv5rjv-llamacpp-launchers-0.4.2"
       },
       "llamacpp-proxy": {
         "pkg-path": "flox-labs/llamacpp-proxy",
@@ -56,10 +59,12 @@
       }
     },
     "hook": {
-      "on-activate": "  cat <<'BANNER'\n\n  llamacpp - local model runtime for coding agents\n\n  Quick start:\n    llamacpp launch claude --model qwen3-coder           # auto-selects best GGUF, configures VRAM\n    llamacpp launch codex --model qwen3-coder\n    llamacpp launch crush --model qwen3-coder\n    llamacpp launch deepseek --model qwen3-coder\n    llamacpp launch gemini --model qwen3-coder\n    llamacpp launch aider --model qwen3-coder\n    llamacpp launch opencode --model qwen3-coder\n\n  Find models:\n    llamacpp model search qwen3                          # search HuggingFace for GGUF models\n    llamacpp model search devstral                       # try different model families\n    llamacpp model search llama                          # browse what's available\n\n  Model spec formats:\n    qwen3-coder                                          # search term (auto-resolves)\n    unsloth/Qwen3-Coder-Next-GGUF:Q4_K_M                # HuggingFace repo + quantization\n    /path/to/model.gguf                                  # local file\n\n  Context vs speed:\n    llamacpp launch claude --model qwen3-coder --big-context   # more context, slightly slower\n    llamacpp launch claude --model qwen3-coder --max-context   # maximum context window\n\n  Manual tuning:\n    llamacpp launch claude --model qwen3-coder --gpu-layers 25 --ctx-size 65536\n\n  Service management:\n    flox services status                                 # check running services\n    flox services logs llama-server                      # view server logs\n    flox services logs llamacpp-proxy                    # view proxy logs\n\n  More: llamacpp help\n\nBANNER\n"
+      "on-activate": "  cat <<'BANNER'\n\n  llamacpp - local model runtime for coding agents\n\n  Quick start:\n    llamacpp launch claude --model qwen3-coder           # auto-selects best GGUF, configures VRAM\n    llamacpp launch codex --model qwen3-coder\n    llamacpp launch crush --model qwen3-coder\n    llamacpp launch deepseek --model qwen3-coder\n    llamacpp launch gemini --model qwen3-coder\n    llamacpp launch aider --model qwen3-coder\n    llamacpp launch opencode --model qwen3-coder\n\n  Find models:\n    llamacpp model search qwen3                          # search HuggingFace for GGUF models\n    llamacpp model search devstral                       # try different model families\n    llamacpp model search llama                          # browse what's available\n\n  Model spec formats:\n    qwen3-coder                                          # search term (auto-resolves)\n    unsloth/Qwen3-Coder-Next-GGUF:Q4_K_M                # HuggingFace repo + quantization\n    /path/to/model.gguf                                  # local file\n\n  Context vs speed:\n    llamacpp launch claude --model qwen3-coder --big-context   # more context, slightly slower\n    llamacpp launch claude --model qwen3-coder --max-context   # maximum context window\n\n  Manual tuning:\n    llamacpp launch claude --model qwen3-coder --gpu-layers 25 --ctx-size 65536\n\n  Service management:\n    flox services status                                 # check running services\n    flox services logs llama-server                      # view server logs\n    flox services logs llamacpp-proxy                    # view proxy logs\n\n  More: llamacpp help                                    readme\n\nBANNER\n"
     },
     "profile": {
-      "common": "  source \"$FLOX_ENV/share/llamacpp-launchers/llamacpp.sh\"\n"
+      "bash": "  source \"$FLOX_ENV/share/llamacpp-launchers/llamacpp.sh\"\n",
+      "zsh": "  source \"$FLOX_ENV/share/llamacpp-launchers/llamacpp.sh\"\n",
+      "fish": "  function readme --description \"display llamacpp README\"\n    llamacpp readme\n  end\n"
     },
     "options": {
       "systems": [
@@ -80,19 +85,19 @@
   "packages": [
     {
       "install_id": "llamacpp-launchers",
-      "store_path": "/nix/store/q1srafq53f8p831pbi2c27lqjvy6qkhb-llamacpp-launchers-0.4.2",
+      "store_path": "/nix/store/wmq9k93bqv04k9kj8mvrnksfysbv5rjv-llamacpp-launchers-0.4.2",
       "system": "aarch64-darwin",
       "priority": 5
     },
     {
       "install_id": "llamacpp-launchers",
-      "store_path": "/nix/store/q1srafq53f8p831pbi2c27lqjvy6qkhb-llamacpp-launchers-0.4.2",
+      "store_path": "/nix/store/wmq9k93bqv04k9kj8mvrnksfysbv5rjv-llamacpp-launchers-0.4.2",
       "system": "aarch64-linux",
       "priority": 5
     },
     {
       "install_id": "llamacpp-launchers",
-      "store_path": "/nix/store/q1srafq53f8p831pbi2c27lqjvy6qkhb-llamacpp-launchers-0.4.2",
+      "store_path": "/nix/store/wmq9k93bqv04k9kj8mvrnksfysbv5rjv-llamacpp-launchers-0.4.2",
       "system": "x86_64-linux",
       "priority": 5
     },
@@ -910,6 +915,96 @@
       },
       "system": "x86_64-linux",
       "group": "opencode",
+      "priority": 5
+    },
+    {
+      "attr_path": "bat",
+      "broken": false,
+      "derivation": "/nix/store/nyvjacmfsckcp7y620vxmifkglkvz4is-bat-0.26.1.drv",
+      "description": "Cat(1) clone with syntax highlighting and Git integration",
+      "install_id": "bat",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "bat-0.26.1",
+      "pname": "bat",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:06:02.656090Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.26.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/igwvpssksmqgxlrd2qk93jydvml2171q-bat-0.26.1"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "bat",
+      "broken": false,
+      "derivation": "/nix/store/k9n0jqm2d31c3lsfsz5jai25cxmsjlgz-bat-0.26.1.drv",
+      "description": "Cat(1) clone with syntax highlighting and Git integration",
+      "install_id": "bat",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "bat-0.26.1",
+      "pname": "bat",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:34:25.844554Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.26.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/m2adi6lwf0nkz17p15q7r1wnpkq7x26n-bat-0.26.1"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "bat",
+      "broken": false,
+      "derivation": "/nix/store/qdnvvczbykgfm2fay0191jqzijm3yns7-bat-0.26.1.drv",
+      "description": "Cat(1) clone with syntax highlighting and Git integration",
+      "install_id": "bat",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "bat-0.26.1",
+      "pname": "bat",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T08:32:50.906089Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.26.1",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/ryfh6hspp28libl3mlw5sv64giq5iasi-bat-0.26.1"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
       "priority": 5
     },
     {
