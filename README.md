@@ -169,6 +169,60 @@ All are optional. Set at activation time or via flags on `llamacpp launch`.
 | `LLAMACPP_API_KEY` | `llamacpp-local` | API key for server auth |
 | `LLAMACPP_PREFERRED_ORGS` | `unsloth,bartowski,QuantFactory` | Preferred HF orgs for model search |
 
+## Getting help
+
+```bash
+readme                                   # display this README with syntax highlighting
+llamacpp help                            # built-in command reference
+```
+
+## Choosing a model
+
+Not sure which model to use? Here's a rough guide by VRAM:
+
+| VRAM | Good fits | Notes |
+|------|-----------|-------|
+| 8-12 GB | 7B models (Q4_K_M) | Fast, fits entirely on GPU |
+| 16-24 GB | 7-32B models (Q4_K_M) | Sweet spot for most coding tasks |
+| 32 GB | 30-70B models (Q4_K_M), 235B MoE (partial) | Larger models need partial CPU offload |
+| 48+ GB | 70B+ models (Q4_K_M-Q8_0) | Full GPU offload for large models |
+
+Start with a model that fits entirely in VRAM for the best experience. Partial CPU offload works but slows inference significantly.
+
+```bash
+llamacpp model search qwen3-coder       # coding-focused models
+llamacpp model search devstral          # Mistral's coding model
+llamacpp model search deepseek-coder    # DeepSeek coding models
+```
+
+## Troubleshooting
+
+**Model won't load (OOM)**
+The model + context window exceeds GPU VRAM. Options:
+- Let the optimizer decide: remove `--gpu-layers` and `--ctx-size` flags
+- Use a smaller quantization: `--model <repo>:Q3_K_M`
+- Reduce context: `--ctx-size 32768`
+- Use a smaller model
+
+**"Server ready" but harness errors on tool use**
+The translation proxy may not be running. Check:
+```bash
+flox services status
+flox services logs llamacpp-proxy
+```
+
+**Stale logs showing old errors**
+`flox services logs` shows the full log history. Check `flox services status` for the actual current state — the server may be running fine despite old error lines in the log.
+
+**"No model configured"**
+Run `llamacpp model set <spec>` or use `llamacpp launch` which sets the model automatically.
+
+**HuggingFace search fails**
+Network issues or API rate limits. Use a pinned repo spec instead:
+```bash
+llamacpp launch claude --model unsloth/Qwen3-Coder-Next-GGUF:Q4_K_M
+```
+
 ## Tested configurations
 
 | Model | GPU | Layers | Context | Status |

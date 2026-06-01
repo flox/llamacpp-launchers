@@ -13,6 +13,7 @@ stdenv.mkDerivation {
     # Install the library for sourcing in [profile]
     mkdir -p $out/share/llamacpp-launchers
     install -m 644 bin/llamacpp $out/share/llamacpp-launchers/llamacpp.sh
+    install -m 644 README.md $out/share/llamacpp-launchers/README.md
 
     # Install an executable wrapper for non-interactive use
     # (flox activate -- llamacpp launch ...)

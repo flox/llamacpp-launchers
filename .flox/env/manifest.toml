@@ -9,6 +9,7 @@ huggingface-hub.pkg-group = "huggingface-hub"
 claude-code.pkg-path = "flox/claude-code"
 claude-code.pkg-group = "claude-code"
 curl.pkg-path = "curl"
+bat.pkg-path = "bat"
 codex.pkg-path = "flox/codex"
 codex.pkg-group = "codex"
 gemini-cli.pkg-path = "flox/gemini-cli"
@@ -23,7 +24,7 @@ vram-optimizer.pkg-path = "flox-labs/vram-optimizer"
 vram-optimizer.pkg-group = "vram-optimizer"
 llamacpp-proxy.pkg-path = "flox-labs/llamacpp-proxy"
 llamacpp-proxy.pkg-group = "llamacpp-proxy"
-llamacpp-launchers.store-path = "/nix/store/q1srafq53f8p831pbi2c27lqjvy6qkhb-llamacpp-launchers-0.4.2"
+llamacpp-launchers.store-path = "/nix/store/3vpq3c0bppai49zqwk1vmx00xf4a3vxr-llamacpp-launchers-0.4.2"
 
 
 [vars]

@@ -1558,6 +1558,18 @@ EXAMPLES
 HELP
 }
 
+readme() {
+  local readme_path="${FLOX_ENV:-}/share/llamacpp-launchers/README.md"
+  if [ ! -f "$readme_path" ]; then
+    readme_path="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]:-${(%):-%x}}")")")/share/llamacpp-launchers/README.md"
+  fi
+  if [ ! -f "$readme_path" ]; then
+    echo "[llamacpp] README not found" >&2
+    return 1
+  fi
+  bat --style=plain --paging=always "$readme_path"
+}
+
 llamacpp() {
   # Auto-re-source if script has been modified since last load
   local _current_mtime
