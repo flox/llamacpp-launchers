@@ -15,13 +15,21 @@ llamacpp launch claude --model qwen3-coder
 ```
 
 This will:
-1. Search HuggingFace for the best GGUF match
+1. Search HuggingFace for the best GGUF match and pin it for reproducibility
 2. Query your GPU's available VRAM
 3. Auto-configure optimal GPU layers and context size
 4. Download the model (cached for future runs)
 5. Start llama-server as a Flox service
 6. Start the translation proxy
-7. Launch Claude Code pointed at the local model
+7. Launch Claude Code pointed at the local model (OAuth bypassed via `--bare`)
+
+### Non-interactive usage
+
+```bash
+flox activate -- llamacpp launch claude --model qwen3-coder
+```
+
+The `llamacpp` command works both as an interactive shell function and as an executable on PATH.
 
 ## Supported harnesses
 
@@ -36,6 +44,21 @@ This will:
 | OpenCode | `llamacpp launch opencode --model <spec>` | OpenAI Chat | No |
 
 Harnesses that use standard OpenAI Chat Completions with function tools (aider, OpenCode, DeepSeek) talk directly to llama-server. The rest route through `llamacpp-proxy` which translates tool schemas and protocol formats.
+
+### Passing harness-specific flags
+
+Flags for the harness itself go after `--`:
+
+```bash
+llamacpp launch claude --model qwen3-coder -- --allowedTools "Bash(git *) Edit Read"
+llamacpp launch codex --model qwen3-coder -- --sandbox workspace-write
+llamacpp launch gemini --model qwen3-coder -- --sandbox=false
+llamacpp launch deepseek --model qwen3-coder -- --yolo
+```
+
+### Claude Code
+
+Claude Code is always launched with `--bare` to prevent OAuth conflicts when using local models. This disables OAuth/keychain lookups (irrelevant for local inference) and avoids the "Auth conflict" warning.
 
 ## Model management
 
@@ -54,6 +77,15 @@ llamacpp model remove <filename>         # delete a local GGUF
 - `unsloth/Qwen3-Coder-Next-GGUF:Q4_K_M` — HuggingFace repo with quantization
 - `unsloth/Qwen3-Coder-Next-GGUF` — HuggingFace repo, defaults to Q4_K_M
 - `/path/to/model.gguf` — local file
+
+### Model pinning
+
+When you use a search term (e.g., `qwen3-coder`), the first successful resolution is pinned to `$FLOX_ENV_CACHE/model-locks/`. Subsequent runs reuse the pinned result without re-searching HuggingFace, ensuring reproducible workflows.
+
+```bash
+llamacpp model pin qwen3-coder           # explicitly pin a search term
+llamacpp model locks                     # list pinned search terms
+```
 
 ## VRAM auto-configuration
 
@@ -96,21 +128,20 @@ When you specify `--gpu-layers` or `--ctx-size`, the optimizer is bypassed and y
    DeepSeek ──────────────────────────┘
 ```
 
-### Components
+### Packages
 
-- **bin/llamacpp** — Shell wrapper sourced in `[profile]`. Defines the `llamacpp` function with model management, server lifecycle, VRAM optimization, and harness launch subcommands.
-- **llama-server** — Flox service. Reads model and config from `$FLOX_ENV_CACHE/llama-server.model` and `$FLOX_ENV_CACHE/llama-server.env`.
-- **llamacpp-proxy** — Flox service. Translates Codex namespace tools, Claude Code schemas, Gemini protocol, and Ollama API to formats llama-server accepts.
-- **vram-optimizer** — Rust CLI. Reads GGUF tensor tables and GPU VRAM to recommend `gpu_layers` and `ctx_size`.
+All components are published Flox packages installed via the manifest:
 
-### External repos
+| Package | Source | Description |
+|---------|--------|-------------|
+| `flox-labs/llamacpp` | [flox-labs](https://flox.dev) | llama-server inference engine |
+| `flox-labs/vram-optimizer` | Rust crate | VRAM budget calculator for gpu_layers + ctx_size |
+| `flox-labs/llamacpp-proxy` | Rust crate | API translation proxy (Codex, Claude, Gemini, Ollama) |
+| `llamacpp-launchers` | This repo (.flox/pkgs/) | Shell wrapper for model management and harness launch |
 
-| Repo | Description |
-|------|-------------|
-| `/home/daedalus/dev/vram-optimizer` | VRAM budget calculator (Rust) |
-| `/home/daedalus/dev/llamacpp-proxy` | API translation proxy (Rust) |
-
-Both will be packaged as Flox packages and available on PATH from the nix store. The current dev paths in `[profile]` are temporary.
+The launcher is installed as both:
+- `$FLOX_ENV/share/llamacpp-launchers/llamacpp.sh` — sourced in `[profile]` for interactive shell functions
+- `$FLOX_ENV/bin/llamacpp` — executable wrapper for non-interactive use
 
 ## Service management
 
@@ -137,10 +168,6 @@ All are optional. Set at activation time or via flags on `llamacpp launch`.
 | `LLAMACPP_GPU_LAYERS` | `99` | Default GPU layers |
 | `LLAMACPP_API_KEY` | `llamacpp-local` | API key for server auth |
 | `LLAMACPP_PREFERRED_ORGS` | `unsloth,bartowski,QuantFactory` | Preferred HF orgs for model search |
-
-## Auto re-source
-
-The wrapper tracks its own file modification time. If `bin/llamacpp` is edited while the shell is active, the next `llamacpp` invocation automatically re-sources the updated script. No need to exit and re-enter the environment.
 
 ## Tested configurations
 
