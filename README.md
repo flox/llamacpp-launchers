@@ -89,7 +89,12 @@ llamacpp model locks                     # list pinned search terms
 
 ## VRAM auto-configuration
 
-When `--gpu-layers` and `--ctx-size` are not specified, the wrapper calls `vram-optimizer` to determine the best balance between inference speed (GPU layers) and context window size. The optimizer reads the GGUF tensor table for precise per-layer VRAM estimates.
+Your GPU has a fixed amount of VRAM. Two things compete for it:
+
+- **GPU layers** — how much of the model runs on GPU vs CPU. More layers on GPU = faster inference, but uses more VRAM. Layers that don't fit on GPU spill to CPU RAM and are much slower.
+- **Context window** — how many tokens the model can see at once (conversation history + system prompt + files). Coding agents need at least 32K just for their system prompt. More context = the model can work with larger codebases, but uses more VRAM.
+
+When `--gpu-layers` and `--ctx-size` are not specified, the wrapper calls `vram-optimizer` to find the best balance. The optimizer reads the GGUF tensor table for precise per-layer VRAM estimates, queries `nvidia-smi` for available VRAM, and scores candidate configurations.
 
 ### Context priority
 
