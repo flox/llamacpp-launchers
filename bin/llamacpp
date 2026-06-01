@@ -9,6 +9,7 @@
 
 export LLAMACPP_HOST="${LLAMACPP_HOST:-127.0.0.1}"
 export LLAMACPP_PORT="${LLAMACPP_PORT:-8080}"
+export LLAMACPP_PROXY_PORT="${LLAMACPP_PROXY_PORT:-8081}"
 export LLAMACPP_MODEL_DIR="${LLAMACPP_MODEL_DIR:-}"
 export LLAMACPP_DEFAULT_QUANT="${LLAMACPP_DEFAULT_QUANT:-Q4_K_M}"
 export LLAMACPP_CTX_SIZE="${LLAMACPP_CTX_SIZE:-65536}"
@@ -239,18 +240,59 @@ __llamacpp_health_wait() {
   return 1
 }
 
+__llamacpp_ensure_proxy() {
+  # Ensure the proxy service is running. Harnesses that need translation
+  # (claude, codex, gemini, crush) route through the proxy; others go direct.
+  if ! command -v llamacpp-proxy >/dev/null 2>&1; then
+    echo "[llamacpp] Warning: llamacpp-proxy not found; harness may fail on tool schemas" >&2
+    return 1
+  fi
+
+  local proxy_url="http://${LLAMACPP_HOST}:${LLAMACPP_PROXY_PORT}/health"
+  if curl -sf "$proxy_url" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "[llamacpp] Starting proxy on port ${LLAMACPP_PROXY_PORT} ..."
+  if flox services status llamacpp-proxy >/dev/null 2>&1; then
+    flox services restart llamacpp-proxy
+  else
+    flox services start llamacpp-proxy
+  fi
+  sleep 1
+
+  if ! curl -sf "$proxy_url" >/dev/null 2>&1; then
+    echo "[llamacpp] Warning: proxy failed to start; check: flox services logs llamacpp-proxy" >&2
+    return 1
+  fi
+  return 0
+}
+
 __llamacpp_configure_claude() {
   local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
-  export ANTHROPIC_BASE_URL="http://${host}:${port}"
+  if __llamacpp_ensure_proxy; then
+    export ANTHROPIC_BASE_URL="http://${host}:${LLAMACPP_PROXY_PORT}"
+  else
+    export ANTHROPIC_BASE_URL="http://${host}:${port}"
+  fi
   export ANTHROPIC_API_KEY="${api_key}"
   claude --model "$model_alias" "$@"
 }
 
 __llamacpp_configure_codex() {
   local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
-  export OPENAI_BASE_URL="http://${host}:${port}/v1"
+  if ! __llamacpp_ensure_proxy; then
+    echo "[llamacpp] Error: proxy required for Codex (namespace tool translation)" >&2
+    return 1
+  fi
   export OPENAI_API_KEY="${api_key}"
-  codex --provider openai-compatible --model "$model_alias" "$@"
+  codex \
+    -c "model_provider=\"llamacpp\"" \
+    -c "model_providers.llamacpp.name=\"llama.cpp\"" \
+    -c "model_providers.llamacpp.base_url=\"http://${host}:${LLAMACPP_PROXY_PORT}/v1\"" \
+    -c "model_providers.llamacpp.wire_api=\"responses\"" \
+    -c "web_search=\"disabled\"" \
+    --model "$model_alias" "$@"
 }
 
 __llamacpp_configure_opencode() {
@@ -265,6 +307,82 @@ __llamacpp_configure_aider() {
   export OPENAI_API_BASE="http://${host}:${port}/v1"
   export OPENAI_API_KEY="${api_key}"
   aider --model "openai/$model_alias" "$@"
+}
+
+__llamacpp_configure_deepseek() {
+  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
+  # Query actual model name from llama-server
+  local server_model
+  server_model=$(curl -sf -H "Authorization: Bearer ${api_key}" "http://${host}:${port}/v1/models" 2>/dev/null | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
+  server_model="${server_model:-$model_alias}"
+
+  local config_file="$FLOX_ENV_CACHE/deepseek-config.toml"
+  cat > "$config_file" <<DSEOF
+provider = "openai"
+model = "${server_model}"
+
+[providers.openai]
+base_url = "http://${host}:${port}/v1"
+api_key = "${api_key}"
+DSEOF
+
+  deepseek-tui --config "$config_file" "$@"
+}
+
+__llamacpp_configure_gemini() {
+  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
+  if ! __llamacpp_ensure_proxy; then
+    echo "[llamacpp] Error: proxy required for Gemini CLI (protocol translation)" >&2
+    return 1
+  fi
+  export GOOGLE_GEMINI_BASE_URL="http://${host}:${LLAMACPP_PROXY_PORT}"
+  export GEMINI_API_KEY="${api_key}"
+  export GEMINI_CLI_TRUST_WORKSPACE=true
+  gemini --sandbox=false "$@"
+}
+
+__llamacpp_configure_crush() {
+  local host="$1" port="$2" api_key="$3" model_alias="$4"; shift 4
+  local proxy_port="$port"
+  if __llamacpp_ensure_proxy; then
+    proxy_port="$LLAMACPP_PROXY_PORT"
+  fi
+
+  # Write crush config pointing at our proxy
+  local crush_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/crush"
+  mkdir -p "$crush_config_dir"
+  cat > "$crush_config_dir/crush.json" <<CRUSHEOF
+{
+  "providers": {
+    "llamacpp": {
+      "type": "openai-compat",
+      "base_url": "http://${host}:${proxy_port}/v1",
+      "api_key": "${api_key}",
+      "models": [
+        {
+          "id": "${model_alias}",
+          "name": "${model_alias}",
+          "context_window": 65536
+        }
+      ]
+    }
+  },
+  "models": {
+    "large": {
+      "model": "${model_alias}",
+      "provider": "llamacpp",
+      "max_tokens": 8192
+    },
+    "small": {
+      "model": "${model_alias}",
+      "provider": "llamacpp",
+      "max_tokens": 4096
+    }
+  }
+}
+CRUSHEOF
+
+  crush "$@"
 }
 
 __llamacpp_resolve_cached_gguf() {
@@ -338,6 +456,7 @@ __llamacpp_auto_configure() {
     --model "$optimizer_model"
     --vram-total-mib "$vram_total"
     --vram-used-mib "$vram_used"
+    --context-priority "$opt_context_priority"
   )
   if [ -n "$optimizer_quant" ]; then
     optimizer_cmd+=(--quant "$optimizer_quant")
@@ -374,12 +493,12 @@ __llamacpp_launch() {
   local harness="$1"; shift
   if [ -z "$harness" ]; then
     echo "Usage: llamacpp launch <harness> --model <spec> [--gpu-layers N] [--ctx-size N] [-- harness args...]" >&2
-    echo "Harnesses: claude, codex, opencode, aider" >&2
+    echo "Harnesses: claude, codex, opencode, aider, crush, deepseek, gemini" >&2
     return 1
   fi
 
   case "$harness" in
-    claude|codex|opencode|aider) ;;
+    claude|codex|opencode|aider|crush|deepseek|gemini) ;;
     *)
       echo "[llamacpp] Unknown harness: $harness" >&2
       echo "[llamacpp] Supported: claude, codex, opencode, aider" >&2
@@ -396,6 +515,7 @@ __llamacpp_launch() {
   local opt_api_key="$LLAMACPP_API_KEY"
   local user_set_gpu_layers=0
   local user_set_ctx_size=0
+  local opt_context_priority="balanced"
   local harness_args=()
 
   while [ $# -gt 0 ]; do
@@ -418,6 +538,10 @@ __llamacpp_launch() {
       --api-key)
         if [ -z "${2:-}" ]; then echo "[llamacpp] Error: --api-key requires a value" >&2; return 1; fi
         opt_api_key="$2"; shift 2 ;;
+      --big-context)
+        opt_context_priority="prefer-context"; shift ;;
+      --max-context)
+        opt_context_priority="max-context"; shift ;;
       --)
         shift; harness_args=("$@"); break ;;
       *)
@@ -518,7 +642,7 @@ HARNESS LAUNCH
   Resolves model, writes server config, restarts the service,
   waits for health, and launches the harness.
 
-  Harnesses: claude, codex, opencode, aider
+  Harnesses: claude, codex, opencode, aider, crush
 
   Server options (override env vars for this launch):
     --gpu-layers, --ngl N    GPU layers to offload (default: 99)

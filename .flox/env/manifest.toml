@@ -9,6 +9,16 @@ huggingface-hub.pkg-group = "huggingface-hub"
 claude-code.pkg-path = "flox/claude-code"
 claude-code.pkg-group = "claude-code"
 curl.pkg-path = "curl"
+codex.pkg-path = "flox/codex"
+codex.pkg-group = "codex"
+gemini-cli.pkg-path = "flox/gemini-cli"
+gemini-cli.pkg-group = "gemini-cli"
+crush.pkg-path = "flox/crush"
+crush.pkg-group = "crush"
+opencode.pkg-path = "flox/opencode"
+opencode.pkg-group = "opencode"
+deepseek-tui.pkg-path = "flox/deepseek-tui"
+deepseek-tui.pkg-group = "deepseek-tui"
 
 
 [vars]
@@ -19,12 +29,21 @@ curl.pkg-path = "curl"
 
 [profile]
 common = '''
-  export PATH="/home/daedalus/dev/vram-optimizer/target/release:$PATH"
+  export PATH="/home/daedalus/dev/vram-optimizer/target/release:/home/daedalus/dev/llamacpp-proxy/target/release:$PATH"
   source "$FLOX_ENV_PROJECT/bin/llamacpp"
 '''
 
 
 [services]
+[services.llamacpp-proxy]
+command = '''
+  [ -f "$FLOX_ENV_CACHE/llama-server.env" ] && . "$FLOX_ENV_CACHE/llama-server.env"
+  exec llamacpp-proxy \
+    --listen "${LLAMACPP_HOST:-127.0.0.1}:${LLAMACPP_PROXY_PORT:-8081}" \
+    --backend "${LLAMACPP_HOST:-127.0.0.1}:${LLAMACPP_PORT:-8080}" \
+    --backend-api-key "${LLAMACPP_API_KEY:-llamacpp-local}"
+'''
+
 [services.llama-server]
 command = '''
   [ -f "$FLOX_ENV_CACHE/llama-server.env" ] && . "$FLOX_ENV_CACHE/llama-server.env"
