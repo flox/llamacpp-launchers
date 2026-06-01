@@ -25,7 +25,46 @@ deepseek-tui.pkg-group = "deepseek-tui"
 
 
 [hook]
+on-activate = '''
+  cat <<'BANNER'
 
+  llamacpp - local model runtime for coding agents
+
+  Quick start:
+    llamacpp launch claude --model qwen3-coder           # auto-selects best GGUF, configures VRAM
+    llamacpp launch codex --model qwen3-coder
+    llamacpp launch crush --model qwen3-coder
+    llamacpp launch deepseek --model qwen3-coder
+    llamacpp launch gemini --model qwen3-coder
+    llamacpp launch aider --model qwen3-coder
+    llamacpp launch opencode --model qwen3-coder
+
+  Find models:
+    llamacpp model search qwen3                          # search HuggingFace for GGUF models
+    llamacpp model search devstral                       # try different model families
+    llamacpp model search llama                          # browse what's available
+
+  Model spec formats:
+    qwen3-coder                                          # search term (auto-resolves)
+    unsloth/Qwen3-Coder-Next-GGUF:Q4_K_M                # HuggingFace repo + quantization
+    /path/to/model.gguf                                  # local file
+
+  Context vs speed:
+    llamacpp launch claude --model qwen3-coder --big-context   # more context, slightly slower
+    llamacpp launch claude --model qwen3-coder --max-context   # maximum context window
+
+  Manual tuning:
+    llamacpp launch claude --model qwen3-coder --gpu-layers 25 --ctx-size 65536
+
+  Service management:
+    flox services status                                 # check running services
+    flox services logs llama-server                      # view server logs
+    flox services logs llamacpp-proxy                    # view proxy logs
+
+  More: llamacpp help
+
+BANNER
+'''
 
 [profile]
 common = '''
