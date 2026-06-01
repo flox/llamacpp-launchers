@@ -77,7 +77,7 @@ common = '''
 [services.llamacpp-proxy]
 command = '''
   [ -f "$FLOX_ENV_CACHE/llama-server.env" ] && . "$FLOX_ENV_CACHE/llama-server.env"
-  exec llamacpp-proxy \
+  exec /home/daedalus/dev/llamacpp-proxy/target/release/llamacpp-proxy \
     --listen "${LLAMACPP_HOST:-127.0.0.1}:${LLAMACPP_PROXY_PORT:-8081}" \
     --backend "${LLAMACPP_HOST:-127.0.0.1}:${LLAMACPP_PORT:-8080}" \
     --backend-api-key "${LLAMACPP_API_KEY:-llamacpp-local}"
