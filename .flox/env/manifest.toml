@@ -1,15 +1,22 @@
 schema-version = "1.12.0"
 
 [install]
+# inference engine
 llamacpp.pkg-path = "flox-labs/llamacpp"
 llamacpp.pkg-group = "llamacpp"
 llamacpp.systems = ["aarch64-darwin", "aarch64-linux", "x86_64-linux"]
-huggingface-hub.pkg-path = "flox/huggingface-hub"
-huggingface-hub.pkg-group = "huggingface-hub"
+
+# runtime tooling
+vram-optimizer.pkg-path = "flox-labs/vram-optimizer"
+vram-optimizer.pkg-group = "vram-optimizer"
+llamacpp-proxy.pkg-path = "flox-labs/llamacpp-proxy"
+llamacpp-proxy.pkg-group = "llamacpp-proxy"
+llamacpp-launchers.pkg-path = "flox-labs/llamacpp-launchers"
+llamacpp-launchers.pkg-group = "llamacpp-launchers"
+
+# coding agent harnesses
 claude-code.pkg-path = "flox/claude-code"
 claude-code.pkg-group = "claude-code"
-curl.pkg-path = "curl"
-bat.pkg-path = "bat"
 codex.pkg-path = "flox/codex"
 codex.pkg-group = "codex"
 gemini-cli.pkg-path = "flox/gemini-cli"
@@ -20,10 +27,12 @@ opencode.pkg-path = "flox/opencode"
 opencode.pkg-group = "opencode"
 deepseek-tui.pkg-path = "flox/deepseek-tui"
 deepseek-tui.pkg-group = "deepseek-tui"
-vram-optimizer.pkg-path = "flox-labs/vram-optimizer"
-vram-optimizer.pkg-group = "vram-optimizer"
-llamacpp-proxy.pkg-path = "flox-labs/llamacpp-proxy"
-llamacpp-proxy.pkg-group = "llamacpp-proxy"
+
+# adjacent utilities
+huggingface-hub.pkg-path = "flox/huggingface-hub"
+huggingface-hub.pkg-group = "huggingface-hub"
+curl.pkg-path = "curl"
+bat.pkg-path = "bat"
 
 
 [vars]
@@ -86,6 +95,7 @@ fish = '''
 
 
 [services]
+# api translation proxy (codex, claude, gemini, ollama)
 [services.llamacpp-proxy]
 command = '''
   [ -f "$FLOX_ENV_CACHE/llama-server.env" ] && . "$FLOX_ENV_CACHE/llama-server.env"
@@ -95,6 +105,7 @@ command = '''
     --backend-api-key "${LLAMACPP_API_KEY:-llamacpp-local}"
 '''
 
+# gguf inference server
 [services.llama-server]
 command = '''
   [ -f "$FLOX_ENV_CACHE/llama-server.env" ] && . "$FLOX_ENV_CACHE/llama-server.env"
@@ -126,8 +137,8 @@ command = '''
 systems = [
   "aarch64-darwin",
   "aarch64-linux",
-#   "x86_64-darwin",
+# "x86_64-darwin",
   "x86_64-linux",
 ]
-# Uncomment to disable CUDA detection.
+# uncomment to disable cuda detection
 # cuda-detection = false
