@@ -24,7 +24,6 @@ vram-optimizer.pkg-path = "flox-labs/vram-optimizer"
 vram-optimizer.pkg-group = "vram-optimizer"
 llamacpp-proxy.pkg-path = "flox-labs/llamacpp-proxy"
 llamacpp-proxy.pkg-group = "llamacpp-proxy"
-llamacpp-launchers.store-path = "/nix/store/6sb0l77jnb1zhgcl2k9w8f1mwhvbicl7-llamacpp-launchers-0.4.2"
 
 
 [vars]

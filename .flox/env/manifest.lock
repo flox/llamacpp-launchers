@@ -42,9 +42,6 @@
           "x86_64-linux"
         ]
       },
-      "llamacpp-launchers": {
-        "store-path": "/nix/store/wmq9k93bqv04k9kj8mvrnksfysbv5rjv-llamacpp-launchers-0.4.2"
-      },
       "llamacpp-proxy": {
         "pkg-path": "flox-labs/llamacpp-proxy",
         "pkg-group": "llamacpp-proxy"
@@ -83,24 +80,6 @@
     }
   },
   "packages": [
-    {
-      "install_id": "llamacpp-launchers",
-      "store_path": "/nix/store/wmq9k93bqv04k9kj8mvrnksfysbv5rjv-llamacpp-launchers-0.4.2",
-      "system": "aarch64-darwin",
-      "priority": 5
-    },
-    {
-      "install_id": "llamacpp-launchers",
-      "store_path": "/nix/store/wmq9k93bqv04k9kj8mvrnksfysbv5rjv-llamacpp-launchers-0.4.2",
-      "system": "aarch64-linux",
-      "priority": 5
-    },
-    {
-      "install_id": "llamacpp-launchers",
-      "store_path": "/nix/store/wmq9k93bqv04k9kj8mvrnksfysbv5rjv-llamacpp-launchers-0.4.2",
-      "system": "x86_64-linux",
-      "priority": 5
-    },
     {
       "attr_path": "claude-code",
       "broken": false,
