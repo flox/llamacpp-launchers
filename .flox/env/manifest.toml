@@ -24,7 +24,7 @@ vram-optimizer.pkg-path = "flox-labs/vram-optimizer"
 vram-optimizer.pkg-group = "vram-optimizer"
 llamacpp-proxy.pkg-path = "flox-labs/llamacpp-proxy"
 llamacpp-proxy.pkg-group = "llamacpp-proxy"
-llamacpp-launchers.store-path = "/nix/store/3vpq3c0bppai49zqwk1vmx00xf4a3vxr-llamacpp-launchers-0.4.2"
+llamacpp-launchers.store-path = "/nix/store/wmq9k93bqv04k9kj8mvrnksfysbv5rjv-llamacpp-launchers-0.4.2"
 
 
 [vars]
@@ -67,14 +67,22 @@ on-activate = '''
     flox services logs llama-server                      # view server logs
     flox services logs llamacpp-proxy                    # view proxy logs
 
-  More: llamacpp help
+  More: llamacpp help                                    readme
 
 BANNER
 '''
 
 [profile]
-common = '''
+bash = '''
   source "$FLOX_ENV/share/llamacpp-launchers/llamacpp.sh"
+'''
+zsh = '''
+  source "$FLOX_ENV/share/llamacpp-launchers/llamacpp.sh"
+'''
+fish = '''
+  function readme --description "display llamacpp README"
+    llamacpp readme
+  end
 '''
 
 
