@@ -882,19 +882,26 @@ __llamacpp_model_set() {
 }
 
 __llamacpp_health_wait() {
-  local host="$1" port="$2" timeout="${3:-120}"
+  local host="$1" port="$2" timeout="${3:-900}"
   local url="http://${host}:${port}/health"
   local elapsed=0
 
   echo "[llamacpp] Waiting for llama-server at ${url} ..."
+  echo "[llamacpp] If the model is downloading, this may take several minutes."
+  echo "[llamacpp] Progress: flox services logs llama-server --follow (in another terminal)"
   while [ "$elapsed" -lt "$timeout" ]; do
     if curl -sf "$url" >/dev/null 2>&1; then
       echo "[llamacpp] Server ready."
       return 0
     fi
-    sleep 2
-    elapsed=$((elapsed + 2))
+    sleep 5
+    elapsed=$((elapsed + 5))
+    # print a dot every 30 seconds so the user knows it's alive
+    if [ $((elapsed % 30)) -eq 0 ]; then
+      printf '.' >&2
+    fi
   done
+  echo "" >&2
 
   echo "[llamacpp] Timed out after ${timeout}s waiting for server." >&2
   echo "[llamacpp] Check logs: flox services logs llama-server" >&2
@@ -1615,7 +1622,7 @@ __llamacpp_launch() {
     fi
   fi
 
-  if ! __llamacpp_health_wait "$opt_host" "$opt_port" 120; then
+  if ! __llamacpp_health_wait "$opt_host" "$opt_port"; then
     if [ "$needs_restart" -eq 1 ]; then
       __llamacpp_launch_failure_diagnostic "health check timed out after service ${restart_action}" "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers"
     else
