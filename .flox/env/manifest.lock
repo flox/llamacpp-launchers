@@ -105,7 +105,7 @@
       "rev": "590bf7840f34d09717966bb31033f299ae870367",
       "rev_count": 5620,
       "rev_date": "2026-06-02T12:31:19Z",
-      "scrape_date": "2026-06-02T16:13:09.046577445Z",
+      "scrape_date": "2026-06-02T23:42:44.599627380Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -135,7 +135,7 @@
       "rev": "590bf7840f34d09717966bb31033f299ae870367",
       "rev_count": 5620,
       "rev_date": "2026-06-02T12:31:19Z",
-      "scrape_date": "2026-06-02T16:13:09.046581591Z",
+      "scrape_date": "2026-06-02T23:42:44.599630194Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -165,7 +165,7 @@
       "rev": "590bf7840f34d09717966bb31033f299ae870367",
       "rev_count": 5620,
       "rev_date": "2026-06-02T12:31:19Z",
-      "scrape_date": "2026-06-02T16:13:09.046582232Z",
+      "scrape_date": "2026-06-02T23:42:44.599630685Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -195,7 +195,7 @@
       "rev": "d58ac51aed2bfb9c25e2c2df6391b9081a16b2bb",
       "rev_count": 5602,
       "rev_date": "2026-06-02T02:04:27Z",
-      "scrape_date": "2026-06-02T16:13:09.046586909Z",
+      "scrape_date": "2026-06-02T23:42:44.599633759Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -225,7 +225,7 @@
       "rev": "d58ac51aed2bfb9c25e2c2df6391b9081a16b2bb",
       "rev_count": 5602,
       "rev_date": "2026-06-02T02:04:27Z",
-      "scrape_date": "2026-06-02T16:13:09.046587530Z",
+      "scrape_date": "2026-06-02T23:42:44.599634220Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -255,7 +255,7 @@
       "rev": "d58ac51aed2bfb9c25e2c2df6391b9081a16b2bb",
       "rev_count": 5602,
       "rev_date": "2026-06-02T02:04:27Z",
-      "scrape_date": "2026-06-02T16:13:09.046589142Z",
+      "scrape_date": "2026-06-02T23:42:44.599635342Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -285,7 +285,7 @@
       "rev": "ec0dd4c37eabe9042c0d7dccbe550d407b51a28b",
       "rev_count": 3677,
       "rev_date": "2026-05-20T12:30:23Z",
-      "scrape_date": "2026-06-02T16:13:09.046593248Z",
+      "scrape_date": "2026-06-02T23:42:44.599637886Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -315,7 +315,7 @@
       "rev": "ec0dd4c37eabe9042c0d7dccbe550d407b51a28b",
       "rev_count": 3677,
       "rev_date": "2026-05-20T12:30:23Z",
-      "scrape_date": "2026-06-02T16:13:09.046593739Z",
+      "scrape_date": "2026-06-02T23:42:44.599638256Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -345,7 +345,7 @@
       "rev": "ec0dd4c37eabe9042c0d7dccbe550d407b51a28b",
       "rev_count": 3677,
       "rev_date": "2026-05-20T12:30:23Z",
-      "scrape_date": "2026-06-02T16:13:09.046594230Z",
+      "scrape_date": "2026-06-02T23:42:44.599638667Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -375,7 +375,7 @@
       "rev": "862ee3f3913627276fe0139e5bebfc1dfeb459fc",
       "rev_count": 3793,
       "rev_date": "2026-05-21T07:45:06Z",
-      "scrape_date": "2026-06-02T16:13:09.046599117Z",
+      "scrape_date": "2026-06-02T23:42:44.599641621Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -405,7 +405,7 @@
       "rev": "862ee3f3913627276fe0139e5bebfc1dfeb459fc",
       "rev_count": 3793,
       "rev_date": "2026-05-21T07:45:06Z",
-      "scrape_date": "2026-06-02T16:13:09.046599578Z",
+      "scrape_date": "2026-06-02T23:42:44.599641922Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -435,7 +435,7 @@
       "rev": "862ee3f3913627276fe0139e5bebfc1dfeb459fc",
       "rev_count": 3793,
       "rev_date": "2026-05-21T07:45:06Z",
-      "scrape_date": "2026-06-02T16:13:09.046600059Z",
+      "scrape_date": "2026-06-02T23:42:44.599642222Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -465,7 +465,7 @@
       "rev": "e727f1b0f40c70b0335091e1a876e582abcccb5a",
       "rev_count": 32,
       "rev_date": "2026-04-20T17:03:53Z",
-      "scrape_date": "2026-06-02T23:29:04.253205874Z",
+      "scrape_date": "2026-06-02T23:42:44.599644085Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -496,7 +496,7 @@
       "rev": "03c79180a25caf8010acefd2502a4c77b37947a1",
       "rev_count": 33,
       "rev_date": "2026-04-20T17:02:10Z",
-      "scrape_date": "2026-06-02T23:29:04.253209769Z",
+      "scrape_date": "2026-06-02T23:42:44.599644606Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -527,7 +527,7 @@
       "rev": "e7d9eb11648f4a9a8aa4a5270776538cda9098ea",
       "rev_count": 3849,
       "rev_date": "2026-05-22T07:36:53Z",
-      "scrape_date": "2026-06-02T16:13:09.046604225Z",
+      "scrape_date": "2026-06-02T23:42:44.599647610Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -557,7 +557,7 @@
       "rev": "e7d9eb11648f4a9a8aa4a5270776538cda9098ea",
       "rev_count": 3849,
       "rev_date": "2026-05-22T07:36:53Z",
-      "scrape_date": "2026-06-02T16:13:09.046604706Z",
+      "scrape_date": "2026-06-02T23:42:44.599647981Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -587,7 +587,7 @@
       "rev": "e7d9eb11648f4a9a8aa4a5270776538cda9098ea",
       "rev_count": 3849,
       "rev_date": "2026-05-22T07:36:53Z",
-      "scrape_date": "2026-06-02T16:13:09.046605076Z",
+      "scrape_date": "2026-06-02T23:42:44.599648271Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -617,7 +617,7 @@
       "rev": "cdbf720010f3cc6bef457b18e15d3eecc95915e3",
       "rev_count": 5623,
       "rev_date": "2026-06-02T12:42:31Z",
-      "scrape_date": "2026-06-02T16:13:09.046610785Z",
+      "scrape_date": "2026-06-02T23:42:44.599651436Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -648,7 +648,7 @@
       "rev": "cdbf720010f3cc6bef457b18e15d3eecc95915e3",
       "rev_count": 5623,
       "rev_date": "2026-06-02T12:42:31Z",
-      "scrape_date": "2026-06-02T16:13:09.046611356Z",
+      "scrape_date": "2026-06-02T23:42:44.599651756Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -679,7 +679,7 @@
       "rev": "cdbf720010f3cc6bef457b18e15d3eecc95915e3",
       "rev_count": 5623,
       "rev_date": "2026-06-02T12:42:31Z",
-      "scrape_date": "2026-06-02T16:13:09.046611926Z",
+      "scrape_date": "2026-06-02T23:42:44.599652097Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -710,7 +710,7 @@
       "rev": "3ebc843f45bd65e90807a232b7b797e448f1dbd9",
       "rev_count": 5,
       "rev_date": "2026-05-30T16:39:07Z",
-      "scrape_date": "2026-06-02T16:13:09.046616834Z",
+      "scrape_date": "2026-06-02T23:42:44.599655342Z",
       "stabilities": [
         "unstable"
       ],
@@ -740,7 +740,7 @@
       "rev": "e49972c6f1e4944ba64c95ccd1d89350255f270d",
       "rev_count": 6,
       "rev_date": "2026-05-30T17:05:07Z",
-      "scrape_date": "2026-06-02T16:13:09.046617505Z",
+      "scrape_date": "2026-06-02T23:42:44.599655923Z",
       "stabilities": [
         "unstable"
       ],
@@ -770,7 +770,7 @@
       "rev": "e49972c6f1e4944ba64c95ccd1d89350255f270d",
       "rev_count": 6,
       "rev_date": "2026-05-30T17:05:07Z",
-      "scrape_date": "2026-06-02T16:13:09.046617976Z",
+      "scrape_date": "2026-06-02T23:42:44.599656333Z",
       "stabilities": [
         "unstable"
       ],
@@ -788,31 +788,118 @@
       "priority": 5
     },
     {
+      "attr_path": "llamacpp-launchers",
+      "broken": false,
+      "derivation": "/nix/store/adjq69c90sn0lrbcfzwm5wq0irq93ck8-llamacpp-launchers-0.4.8.drv",
+      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
+      "install_id": "llamacpp-launchers",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "name": "llamacpp-launchers-0.4.8",
+      "pname": "llamacpp-launchers",
+      "rev": "6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "rev_count": 37,
+      "rev_date": "2026-06-02T23:38:24Z",
+      "scrape_date": "2026-06-02T23:42:44.599658887Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.4.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/wl378kgi5b0vizzk2nzq2zf0wbz4cn1g-llamacpp-launchers-0.4.8"
+      },
+      "system": "aarch64-darwin",
+      "group": "llamacpp-launchers",
+      "priority": 5
+    },
+    {
+      "attr_path": "llamacpp-launchers",
+      "broken": false,
+      "derivation": "/nix/store/13s84r2l1dbiyhfxhklp5vyn8k2rnf50-llamacpp-launchers-0.4.8.drv",
+      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
+      "install_id": "llamacpp-launchers",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "name": "llamacpp-launchers-0.4.8",
+      "pname": "llamacpp-launchers",
+      "rev": "6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "rev_count": 37,
+      "rev_date": "2026-06-02T23:38:24Z",
+      "scrape_date": "2026-06-02T23:42:44.599659228Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.4.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/mlzrhv73hgm1bp7gvmhbnvvmi29m6x31-llamacpp-launchers-0.4.8"
+      },
+      "system": "aarch64-linux",
+      "group": "llamacpp-launchers",
+      "priority": 5
+    },
+    {
+      "attr_path": "llamacpp-launchers",
+      "broken": false,
+      "derivation": "/nix/store/rjaagpyw46rwp7cx8sxd6xa5ckfbyx1f-llamacpp-launchers-0.4.8.drv",
+      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
+      "install_id": "llamacpp-launchers",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "name": "llamacpp-launchers-0.4.8",
+      "pname": "llamacpp-launchers",
+      "rev": "6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "rev_count": 37,
+      "rev_date": "2026-06-02T23:38:24Z",
+      "scrape_date": "2026-06-02T23:42:44.599659478Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.4.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/yavisa0kign0417wwbh5xq4hsm3896nc-llamacpp-launchers-0.4.8"
+      },
+      "system": "x86_64-linux",
+      "group": "llamacpp-launchers",
+      "priority": 5
+    },
+    {
       "attr_path": "llamacpp-proxy",
       "broken": false,
-      "derivation": "/nix/store/dpm7xj1vy31611qj8c86nmcrgp0x4sqn-llamacpp-proxy-0.4.2.drv",
+      "derivation": "/nix/store/pcfrqgzxmdxiywgyf922g23kg5p4wnv1-llamacpp-proxy-0.4.3.drv",
       "description": "Unified API translation proxy for llama-server coding-agent harness compatibility",
       "install_id": "llamacpp-proxy",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-proxy?rev=4d6f7b0758e329b8928241895160229a87646747",
-      "name": "llamacpp-proxy-0.4.2",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-proxy?rev=0de024c89b44dea045ea89b4a7ebe970f0b2cacf",
+      "name": "llamacpp-proxy-0.4.3",
       "pname": "llamacpp-proxy",
-      "rev": "4d6f7b0758e329b8928241895160229a87646747",
-      "rev_count": 3,
-      "rev_date": "2026-06-01T19:48:11Z",
-      "scrape_date": "2026-06-02T16:13:09.046628301Z",
+      "rev": "0de024c89b44dea045ea89b4a7ebe970f0b2cacf",
+      "rev_count": 4,
+      "rev_date": "2026-06-02T22:48:38Z",
+      "scrape_date": "2026-06-02T23:42:44.599662382Z",
       "stabilities": [
         "stable",
         "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "0.4.2",
+      "version": "0.4.3",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/yrpp50fd7kj9gplmyr2msjk8d8ws89nl-llamacpp-proxy-0.4.2"
+        "out": "/nix/store/73v84z4ffccnv1k593hpha4bvgb0cigx-llamacpp-proxy-0.4.3"
       },
       "system": "aarch64-darwin",
       "group": "llamacpp-proxy",
@@ -831,7 +918,7 @@
       "rev": "4d6f7b0758e329b8928241895160229a87646747",
       "rev_count": 3,
       "rev_date": "2026-06-01T19:48:11Z",
-      "scrape_date": "2026-06-02T16:13:09.046628852Z",
+      "scrape_date": "2026-06-02T23:42:44.599662703Z",
       "stabilities": [
         "stable",
         "staging",
@@ -852,29 +939,29 @@
     {
       "attr_path": "llamacpp-proxy",
       "broken": false,
-      "derivation": "/nix/store/57waapyk9jg0x3vlcdf32fkds4jdbhz3-llamacpp-proxy-0.4.2.drv",
+      "derivation": "/nix/store/pwscws41gfp26rzwmp9k0ghphilka1qr-llamacpp-proxy-0.4.3.drv",
       "description": "Unified API translation proxy for llama-server coding-agent harness compatibility",
       "install_id": "llamacpp-proxy",
       "license": "[ MIT, Apache-2.0 ]",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-proxy.git?rev=4d6f7b0758e329b8928241895160229a87646747",
-      "name": "llamacpp-proxy-0.4.2",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-proxy.git?rev=0de024c89b44dea045ea89b4a7ebe970f0b2cacf",
+      "name": "llamacpp-proxy-0.4.3",
       "pname": "llamacpp-proxy",
-      "rev": "4d6f7b0758e329b8928241895160229a87646747",
-      "rev_count": 3,
-      "rev_date": "2026-06-01T19:48:11Z",
-      "scrape_date": "2026-06-02T16:13:09.046629242Z",
+      "rev": "0de024c89b44dea045ea89b4a7ebe970f0b2cacf",
+      "rev_count": 4,
+      "rev_date": "2026-06-02T22:48:38Z",
+      "scrape_date": "2026-06-02T23:42:44.599662943Z",
       "stabilities": [
         "stable",
         "staging",
         "unstable"
       ],
       "unfree": false,
-      "version": "0.4.2",
+      "version": "0.4.3",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/1kh1hy0fls7dpv2z6sjcz5lk13xs2kqx-llamacpp-proxy-0.4.2"
+        "out": "/nix/store/12zx1cxxq94n3ydj6l7l6hyq274n4fbs-llamacpp-proxy-0.4.3"
       },
       "system": "x86_64-linux",
       "group": "llamacpp-proxy",
@@ -893,7 +980,7 @@
       "rev": "55ae1ca7e6566adaebc535467e2dc408f157e9af",
       "rev_count": 5177,
       "rev_date": "2026-05-31T01:31:23Z",
-      "scrape_date": "2026-06-02T16:13:09.046633459Z",
+      "scrape_date": "2026-06-02T23:42:44.599665417Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -923,7 +1010,7 @@
       "rev": "55ae1ca7e6566adaebc535467e2dc408f157e9af",
       "rev_count": 5177,
       "rev_date": "2026-05-31T01:31:23Z",
-      "scrape_date": "2026-06-02T16:13:09.046634Z",
+      "scrape_date": "2026-06-02T23:42:44.599665747Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -953,7 +1040,7 @@
       "rev": "55ae1ca7e6566adaebc535467e2dc408f157e9af",
       "rev_count": 5177,
       "rev_date": "2026-05-31T01:31:23Z",
-      "scrape_date": "2026-06-02T16:13:09.046634420Z",
+      "scrape_date": "2026-06-02T23:42:44.599666008Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -1182,7 +1269,7 @@
       "rev": "39eec8fcc2a562133818b03b88a64a6e242c34f4",
       "rev_count": 6,
       "rev_date": "2026-06-02T03:55:40Z",
-      "scrape_date": "2026-06-02T16:13:09.046672187Z",
+      "scrape_date": "2026-06-02T23:42:44.599688021Z",
       "stabilities": [
         "stable",
         "staging",
@@ -1213,7 +1300,7 @@
       "rev": "39eec8fcc2a562133818b03b88a64a6e242c34f4",
       "rev_count": 6,
       "rev_date": "2026-06-02T03:55:40Z",
-      "scrape_date": "2026-06-02T16:13:09.046672788Z",
+      "scrape_date": "2026-06-02T23:42:44.599688351Z",
       "stabilities": [
         "stable",
         "staging",
@@ -1244,7 +1331,7 @@
       "rev": "39eec8fcc2a562133818b03b88a64a6e242c34f4",
       "rev_count": 6,
       "rev_date": "2026-06-02T03:55:40Z",
-      "scrape_date": "2026-06-02T16:13:09.046673238Z",
+      "scrape_date": "2026-06-02T23:42:44.599688692Z",
       "stabilities": [
         "stable",
         "staging",
@@ -1260,93 +1347,6 @@
       },
       "system": "x86_64-linux",
       "group": "vram-optimizer",
-      "priority": 5
-    },
-    {
-      "attr_path": "llamacpp-launchers",
-      "broken": false,
-      "derivation": "/nix/store/adjq69c90sn0lrbcfzwm5wq0irq93ck8-llamacpp-launchers-0.4.8.drv",
-      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
-      "install_id": "llamacpp-launchers",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
-      "name": "llamacpp-launchers-0.4.8",
-      "pname": "llamacpp-launchers",
-      "rev": "6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
-      "rev_count": 37,
-      "rev_date": "2026-06-02T23:38:24Z",
-      "scrape_date": "2026-06-02T23:41:57.929504164Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.4.8",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/wl378kgi5b0vizzk2nzq2zf0wbz4cn1g-llamacpp-launchers-0.4.8"
-      },
-      "system": "aarch64-darwin",
-      "group": "llamacpp-launchers",
-      "priority": 5
-    },
-    {
-      "attr_path": "llamacpp-launchers",
-      "broken": false,
-      "derivation": "/nix/store/13s84r2l1dbiyhfxhklp5vyn8k2rnf50-llamacpp-launchers-0.4.8.drv",
-      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
-      "install_id": "llamacpp-launchers",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
-      "name": "llamacpp-launchers-0.4.8",
-      "pname": "llamacpp-launchers",
-      "rev": "6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
-      "rev_count": 37,
-      "rev_date": "2026-06-02T23:38:24Z",
-      "scrape_date": "2026-06-02T23:41:57.929506938Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.4.8",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/mlzrhv73hgm1bp7gvmhbnvvmi29m6x31-llamacpp-launchers-0.4.8"
-      },
-      "system": "aarch64-linux",
-      "group": "llamacpp-launchers",
-      "priority": 5
-    },
-    {
-      "attr_path": "llamacpp-launchers",
-      "broken": false,
-      "derivation": "/nix/store/rjaagpyw46rwp7cx8sxd6xa5ckfbyx1f-llamacpp-launchers-0.4.8.drv",
-      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
-      "install_id": "llamacpp-launchers",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
-      "name": "llamacpp-launchers-0.4.8",
-      "pname": "llamacpp-launchers",
-      "rev": "6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
-      "rev_count": 37,
-      "rev_date": "2026-06-02T23:38:24Z",
-      "scrape_date": "2026-06-02T23:41:57.929507278Z",
-      "stabilities": [
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.4.8",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/yavisa0kign0417wwbh5xq4hsm3896nc-llamacpp-launchers-0.4.8"
-      },
-      "system": "x86_64-linux",
-      "group": "llamacpp-launchers",
       "priority": 5
     }
   ],
