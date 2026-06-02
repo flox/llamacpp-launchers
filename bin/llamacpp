@@ -261,6 +261,69 @@ __llamacpp_launch_failure_diagnostic() {
   echo "[llamacpp]   - for download failures: verify network access and the HuggingFace repo/quant" >&2
 }
 
+__llamacpp_format_bytes() {
+  local bytes="${1:-0}"
+  awk "BEGIN {
+    b = $bytes + 0
+    if      (b >= 1073741824) printf \"%.1f GiB\", b/1073741824
+    else if (b >= 1048576)    printf \"%.0f MiB\", b/1048576
+    else                      printf \"%.0f KiB\", b/1024
+  }"
+}
+
+__llamacpp_format_elapsed() {
+  local s="${1:-0}"
+  if [ "$s" -ge 60 ]; then
+    printf '%dm %ds' "$((s / 60))" "$((s % 60))"
+  else
+    printf '%ds' "$s"
+  fi
+}
+
+__llamacpp_file_size() {
+  case "$(uname -s)" in
+    Darwin) stat -f %z "$1" 2>/dev/null ;;
+    *)      stat -c %s "$1" 2>/dev/null ;;
+  esac
+}
+
+__llamacpp_download_progress_info() {
+  # sets: _dl_file (path to .downloadInProgress file, empty if none)
+  #       _dl_expected (expected total bytes, empty if unknown)
+  local resolved="$1"
+  _dl_file="" _dl_expected=""
+
+  # only HF specs have cache downloads (local .gguf paths don't)
+  case "$resolved" in
+    */*:*) ;;
+    *) return ;;
+  esac
+
+  local org="${resolved%%/*}"
+  local repo_quant="${resolved#*/}"
+  local repo="${repo_quant%%:*}"
+  local quant="${repo_quant#*:}"
+  local cache_dir="$HOME/.cache/llama.cpp"
+
+  # glob for any .downloadInProgress file matching this org/repo
+  local f
+  for f in "${cache_dir}/${org}_${repo}_"*.downloadInProgress; do
+    [ -f "$f" ] && { _dl_file="$f"; break; }
+  done
+
+  # try to get expected size from manifest (if it exists yet)
+  local manifest="${cache_dir}/manifest=${org}=${repo}=${quant}.json"
+  if [ -f "$manifest" ]; then
+    _dl_expected=$(python3 -S -c "
+import json, sys
+try:
+    m = json.load(open('$manifest'))
+    print(m.get('ggufFile', {}).get('size', ''))
+except: pass
+" 2>/dev/null)
+  fi
+}
+
 __llamacpp_write_model_state() {
   local resolved="$1"
   local state_file tmp rc
@@ -882,29 +945,72 @@ __llamacpp_model_set() {
 }
 
 __llamacpp_health_wait() {
-  local host="$1" port="$2" timeout="${3:-900}"
+  local host="$1" port="$2" timeout="${3:-${LLAMACPP_HEALTH_TIMEOUT:-900}}"
+  local resolved="${4:-}"
   local url="http://${host}:${port}/health"
-  local elapsed=0
+  local elapsed=0 poll_interval=3
+  local _dl_file="" _dl_expected="" last_status=""
 
-  echo "[llamacpp] Waiting for llama-server at ${url} ..."
-  echo "[llamacpp] If the model is downloading, this may take several minutes."
-  echo "[llamacpp] Progress: flox services logs llama-server --follow (in another terminal)"
+  printf '[llamacpp] Waiting for llama-server at %s ...\n' "$url"
+
   while [ "$elapsed" -lt "$timeout" ]; do
     if curl -sf "$url" >/dev/null 2>&1; then
-      echo "[llamacpp] Server ready."
+      [ -n "$last_status" ] && printf '\n'
+      printf '[llamacpp] Server ready. (%s)\n' "$(__llamacpp_format_elapsed "$elapsed")"
       return 0
     fi
-    sleep 5
-    elapsed=$((elapsed + 5))
-    # print a dot every 30 seconds so the user knows it's alive
-    if [ $((elapsed % 30)) -eq 0 ]; then
-      printf '.' >&2
+
+    if [ -n "$resolved" ]; then
+      __llamacpp_download_progress_info "$resolved"
+    fi
+
+    local time_str
+    time_str="$(__llamacpp_format_elapsed "$elapsed")"
+
+    if [ -n "$_dl_file" ] && [ -f "$_dl_file" ]; then
+      local cur_bytes cur_fmt
+      cur_bytes=$(__llamacpp_file_size "$_dl_file") || cur_bytes=0
+      cur_fmt=$(__llamacpp_format_bytes "$cur_bytes")
+      if [ -n "$_dl_expected" ] && [ "$_dl_expected" -gt 0 ] 2>/dev/null; then
+        local total_fmt pct
+        total_fmt=$(__llamacpp_format_bytes "$_dl_expected")
+        pct=$(awk "BEGIN { printf \"%.0f\", ($cur_bytes / $_dl_expected) * 100 }")
+        printf '\r[llamacpp] Downloading model... %s / %s (%s%%) - %s elapsed  ' \
+          "$cur_fmt" "$total_fmt" "$pct" "$time_str"
+      else
+        printf '\r[llamacpp] Downloading model... %s - %s elapsed  ' \
+          "$cur_fmt" "$time_str"
+      fi
+      last_status="downloading"
+    else
+      printf '\r[llamacpp] Loading model... %s elapsed  ' "$time_str"
+      last_status="loading"
+    fi
+
+    sleep "$poll_interval"
+    elapsed=$((elapsed + poll_interval))
+
+    # check if service is still alive
+    if [ $((elapsed % 15)) -eq 0 ] && [ "$elapsed" -gt 0 ]; then
+      local svc_status
+      svc_status=$(flox services status --json 2>/dev/null \
+        | python3 -S -c "
+import json, sys
+for s in json.load(sys.stdin):
+    if s['name'] == 'llama-server':
+        print(s['status']); break
+" 2>/dev/null)
+      if [ -n "$svc_status" ] && [ "$svc_status" != "Running" ]; then
+        [ -n "$last_status" ] && printf '\n'
+        printf '[llamacpp] Server process exited during startup (status: %s).\n' "$svc_status" >&2
+        return 1
+      fi
     fi
   done
-  echo "" >&2
 
-  echo "[llamacpp] Timed out after ${timeout}s waiting for server." >&2
-  echo "[llamacpp] Check logs: flox services logs llama-server" >&2
+  [ -n "$last_status" ] && printf '\n'
+  printf '[llamacpp] Timed out after %ss waiting for server.\n' "$timeout" >&2
+  printf '[llamacpp] Check logs: flox services logs llama-server\n' >&2
   return 1
 }
 
@@ -1625,7 +1731,7 @@ __llamacpp_launch() {
     fi
   fi
 
-  if ! __llamacpp_health_wait "$opt_host" "$opt_port"; then
+  if ! __llamacpp_health_wait "$opt_host" "$opt_port" "" "$resolved"; then
     if [ "$needs_restart" -eq 1 ]; then
       __llamacpp_launch_failure_diagnostic "health check timed out after service ${restart_action}" "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers"
     else
@@ -1727,6 +1833,7 @@ ENVIRONMENT VARIABLES (set at activation time)
   LLAMACPP_GPU_LAYERS        GPU layers to offload (default: 99)
   LLAMACPP_API_KEY           API key for server auth (default: llamacpp-local)
   LLAMACPP_PREFERRED_ORGS    Comma-separated preferred HF orgs for model search
+  LLAMACPP_HEALTH_TIMEOUT    Max seconds to wait for server ready (default: 900)
 
 EXAMPLES
   llamacpp model search qwen3-coder

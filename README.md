@@ -94,7 +94,7 @@ Your GPU has a fixed amount of VRAM. Two things compete for it:
 - **GPU layers** — how much of the model runs on GPU vs CPU. More layers on GPU = faster inference, but uses more VRAM. Layers that don't fit on GPU spill to CPU RAM and are much slower.
 - **Context window** — how many tokens the model can see at once (conversation history + system prompt + files). Coding agents need at least 32K just for their system prompt. More context = the model can work with larger codebases, but uses more VRAM.
 
-When `--gpu-layers` and `--ctx-size` are not specified, the wrapper calls `vram-optimizer` to find the best balance. The optimizer reads the GGUF tensor table for precise per-layer VRAM estimates, queries `nvidia-smi` for available VRAM, and scores candidate configurations.
+When `--gpu-layers` and `--ctx-size` are not specified, the wrapper calls `vram-optimizer` to find the best balance. The optimizer reads the GGUF tensor table for precise per-layer VRAM estimates, queries available memory (`nvidia-smi` on Linux/CUDA, unified memory on Apple Silicon), and scores candidate configurations.
 
 ### Context priority
 
@@ -173,6 +173,7 @@ All are optional. Set at activation time or via flags on `llamacpp launch`.
 | `LLAMACPP_GPU_LAYERS` | `99` | Default GPU layers |
 | `LLAMACPP_API_KEY` | `llamacpp-local` | API key for server auth |
 | `LLAMACPP_PREFERRED_ORGS` | `unsloth,bartowski,QuantFactory` | Preferred HF orgs for model search |
+| `LLAMACPP_HEALTH_TIMEOUT` | `900` | Max seconds to wait for server ready |
 
 ## Getting help
 

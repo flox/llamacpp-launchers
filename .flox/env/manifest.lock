@@ -38,8 +38,7 @@
         "pkg-group": "llamacpp"
       },
       "llamacpp-launchers": {
-        "pkg-path": "flox-labs/llamacpp-launchers",
-        "pkg-group": "llamacpp-launchers"
+        "store-path": "/nix/store/bp1hcx5rzf8cxa3v06qrhgw2bcs09dzl-llamacpp-launchers-0.4.7"
       },
       "llamacpp-proxy": {
         "pkg-path": "flox-labs/llamacpp-proxy",
@@ -79,6 +78,24 @@
     }
   },
   "packages": [
+    {
+      "install_id": "llamacpp-launchers",
+      "store_path": "/nix/store/bp1hcx5rzf8cxa3v06qrhgw2bcs09dzl-llamacpp-launchers-0.4.7",
+      "system": "aarch64-darwin",
+      "priority": 5
+    },
+    {
+      "install_id": "llamacpp-launchers",
+      "store_path": "/nix/store/bp1hcx5rzf8cxa3v06qrhgw2bcs09dzl-llamacpp-launchers-0.4.7",
+      "system": "aarch64-linux",
+      "priority": 5
+    },
+    {
+      "install_id": "llamacpp-launchers",
+      "store_path": "/nix/store/bp1hcx5rzf8cxa3v06qrhgw2bcs09dzl-llamacpp-launchers-0.4.7",
+      "system": "x86_64-linux",
+      "priority": 5
+    },
     {
       "attr_path": "claude-code",
       "broken": false,
@@ -710,96 +727,6 @@
       },
       "system": "x86_64-linux",
       "group": "llamacpp",
-      "priority": 5
-    },
-    {
-      "attr_path": "llamacpp-launchers",
-      "broken": false,
-      "derivation": "/nix/store/144firggj3flrfsqfx9wqyznm93ljmkj-llamacpp-launchers-0.4.2.drv",
-      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
-      "install_id": "llamacpp-launchers",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=2c5c27c2dc53c014dbc7a23aa89dec41072844f2",
-      "name": "llamacpp-launchers-0.4.2",
-      "pname": "llamacpp-launchers",
-      "rev": "2c5c27c2dc53c014dbc7a23aa89dec41072844f2",
-      "rev_count": 16,
-      "rev_date": "2026-06-01T23:26:13Z",
-      "scrape_date": "2026-06-01T23:30:53.980056788Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.4.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/yk7hw1sx6wbixanxjqzc09p2zy6lazs9-llamacpp-launchers-0.4.2"
-      },
-      "system": "aarch64-darwin",
-      "group": "llamacpp-launchers",
-      "priority": 5
-    },
-    {
-      "attr_path": "llamacpp-launchers",
-      "broken": false,
-      "derivation": "/nix/store/jdj3ygdn1sir1gjbjwm7akl2af766203-llamacpp-launchers-0.4.2.drv",
-      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
-      "install_id": "llamacpp-launchers",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=2c5c27c2dc53c014dbc7a23aa89dec41072844f2",
-      "name": "llamacpp-launchers-0.4.2",
-      "pname": "llamacpp-launchers",
-      "rev": "2c5c27c2dc53c014dbc7a23aa89dec41072844f2",
-      "rev_count": 16,
-      "rev_date": "2026-06-01T23:26:13Z",
-      "scrape_date": "2026-06-01T23:30:53.980059973Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.4.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/7c5c4rl2xndkard76sliq56mc3x8rl18-llamacpp-launchers-0.4.2"
-      },
-      "system": "aarch64-linux",
-      "group": "llamacpp-launchers",
-      "priority": 5
-    },
-    {
-      "attr_path": "llamacpp-launchers",
-      "broken": false,
-      "derivation": "/nix/store/3v9gjkcxf5q1mhyxcacmcj68dy79bl2j-llamacpp-launchers-0.4.2.drv",
-      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
-      "install_id": "llamacpp-launchers",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=ba3cbd86f51b2023d58b407df971a28dc7833110",
-      "name": "llamacpp-launchers-0.4.2",
-      "pname": "llamacpp-launchers",
-      "rev": "ba3cbd86f51b2023d58b407df971a28dc7833110",
-      "rev_count": 15,
-      "rev_date": "2026-06-01T23:21:40Z",
-      "scrape_date": "2026-06-01T23:30:53.980060604Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.4.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/qnk8xzjrvyycdk1vjadvv62g1if1li26-llamacpp-launchers-0.4.2"
-      },
-      "system": "x86_64-linux",
-      "group": "llamacpp-launchers",
       "priority": 5
     },
     {

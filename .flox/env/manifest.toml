@@ -10,8 +10,7 @@ vram-optimizer.pkg-path = "flox-labs/vram-optimizer"
 vram-optimizer.pkg-group = "vram-optimizer"
 llamacpp-proxy.pkg-path = "flox-labs/llamacpp-proxy"
 llamacpp-proxy.pkg-group = "llamacpp-proxy"
-llamacpp-launchers.pkg-path = "flox-labs/llamacpp-launchers"
-llamacpp-launchers.pkg-group = "llamacpp-launchers"
+llamacpp-launchers.store-path = "/nix/store/bp1hcx5rzf8cxa3v06qrhgw2bcs09dzl-llamacpp-launchers-0.4.7"
 
 # coding agent harnesses
 claude-code.pkg-path = "flox/claude-code"
