@@ -51,7 +51,8 @@
         ]
       },
       "llamacpp-launchers": {
-        "store-path": "/nix/store/nnqwk6fnkgy4kim88ywhxk74yi9hq29d-llamacpp-launchers-0.4.8"
+        "pkg-path": "flox-labs/llamacpp-launchers",
+        "pkg-group": "llamacpp-launchers"
       },
       "llamacpp-proxy": {
         "pkg-path": "flox-labs/llamacpp-proxy",
@@ -91,24 +92,6 @@
     }
   },
   "packages": [
-    {
-      "install_id": "llamacpp-launchers",
-      "store_path": "/nix/store/nnqwk6fnkgy4kim88ywhxk74yi9hq29d-llamacpp-launchers-0.4.8",
-      "system": "aarch64-darwin",
-      "priority": 5
-    },
-    {
-      "install_id": "llamacpp-launchers",
-      "store_path": "/nix/store/nnqwk6fnkgy4kim88ywhxk74yi9hq29d-llamacpp-launchers-0.4.8",
-      "system": "aarch64-linux",
-      "priority": 5
-    },
-    {
-      "install_id": "llamacpp-launchers",
-      "store_path": "/nix/store/nnqwk6fnkgy4kim88ywhxk74yi9hq29d-llamacpp-launchers-0.4.8",
-      "system": "x86_64-linux",
-      "priority": 5
-    },
     {
       "attr_path": "claude-code",
       "broken": false,
@@ -1278,6 +1261,93 @@
       "system": "x86_64-linux",
       "group": "vram-optimizer",
       "priority": 5
+    },
+    {
+      "attr_path": "llamacpp-launchers",
+      "broken": false,
+      "derivation": "/nix/store/adjq69c90sn0lrbcfzwm5wq0irq93ck8-llamacpp-launchers-0.4.8.drv",
+      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
+      "install_id": "llamacpp-launchers",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "name": "llamacpp-launchers-0.4.8",
+      "pname": "llamacpp-launchers",
+      "rev": "6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "rev_count": 37,
+      "rev_date": "2026-06-02T23:38:24Z",
+      "scrape_date": "2026-06-02T23:41:57.929504164Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.4.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/wl378kgi5b0vizzk2nzq2zf0wbz4cn1g-llamacpp-launchers-0.4.8"
+      },
+      "system": "aarch64-darwin",
+      "group": "llamacpp-launchers",
+      "priority": 5
+    },
+    {
+      "attr_path": "llamacpp-launchers",
+      "broken": false,
+      "derivation": "/nix/store/13s84r2l1dbiyhfxhklp5vyn8k2rnf50-llamacpp-launchers-0.4.8.drv",
+      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
+      "install_id": "llamacpp-launchers",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "name": "llamacpp-launchers-0.4.8",
+      "pname": "llamacpp-launchers",
+      "rev": "6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "rev_count": 37,
+      "rev_date": "2026-06-02T23:38:24Z",
+      "scrape_date": "2026-06-02T23:41:57.929506938Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.4.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/mlzrhv73hgm1bp7gvmhbnvvmi29m6x31-llamacpp-launchers-0.4.8"
+      },
+      "system": "aarch64-linux",
+      "group": "llamacpp-launchers",
+      "priority": 5
+    },
+    {
+      "attr_path": "llamacpp-launchers",
+      "broken": false,
+      "derivation": "/nix/store/rjaagpyw46rwp7cx8sxd6xa5ckfbyx1f-llamacpp-launchers-0.4.8.drv",
+      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
+      "install_id": "llamacpp-launchers",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "name": "llamacpp-launchers-0.4.8",
+      "pname": "llamacpp-launchers",
+      "rev": "6fdd52ba4975e49e0a743c3ae01c0cb70f634066",
+      "rev_count": 37,
+      "rev_date": "2026-06-02T23:38:24Z",
+      "scrape_date": "2026-06-02T23:41:57.929507278Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.4.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/yavisa0kign0417wwbh5xq4hsm3896nc-llamacpp-launchers-0.4.8"
+      },
+      "system": "x86_64-linux",
+      "group": "llamacpp-launchers",
+      "priority": 5
     }
   ],
   "compose": {
@@ -1323,7 +1393,8 @@
           "pkg-group": "huggingface-hub"
         },
         "llamacpp-launchers": {
-          "store-path": "/nix/store/nnqwk6fnkgy4kim88ywhxk74yi9hq29d-llamacpp-launchers-0.4.8"
+          "pkg-path": "flox-labs/llamacpp-launchers",
+          "pkg-group": "llamacpp-launchers"
         },
         "llamacpp-proxy": {
           "pkg-path": "flox-labs/llamacpp-proxy",
