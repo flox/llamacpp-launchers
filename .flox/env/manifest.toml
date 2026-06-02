@@ -32,6 +32,7 @@ huggingface-hub.pkg-path = "flox/huggingface-hub"
 huggingface-hub.pkg-group = "huggingface-hub"
 curl.pkg-path = "curl"
 bat.pkg-path = "bat"
+bashInteractive.pkg-path = "bashInteractive"
 
 
 [vars]
