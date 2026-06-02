@@ -1414,9 +1414,12 @@ __llamacpp_auto_configure() {
 
   if [ "$exit_code" -ne 0 ]; then
     echo "[llamacpp] vram-optimizer: $output" >&2
-    local mem_label="VRAM"
-    [ "$(uname -s)" = "Darwin" ] && mem_label="memory"
-    echo "[llamacpp] Model may be too large for available ${mem_label} (${vram_total} MiB total, ${vram_used} MiB used, ${safety_margin} MiB safety margin)." >&2
+    # only show vram/memory sizing advice when the error is about capacity
+    if echo "$output" | grep -qiE "MiB|configuration|too large"; then
+      local mem_label="VRAM"
+      [ "$(uname -s)" = "Darwin" ] && mem_label="memory"
+      echo "[llamacpp] Model may be too large for available ${mem_label} (${vram_total} MiB total, ${vram_used} MiB used, ${safety_margin} MiB safety margin)." >&2
+    fi
     echo "[llamacpp] Options:" >&2
     echo "[llamacpp]   --gpu-layers <N> --ctx-size <N>  (manual override, experiment until it loads)" >&2
     echo "[llamacpp]   --model <repo>:Q3_K_M            (smaller quantization)" >&2
