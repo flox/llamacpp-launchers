@@ -667,7 +667,36 @@ __llamacpp_model_search() {
     return 1
   fi
   echo "[llamacpp] Searching HuggingFace for GGUF models matching: $query"
-  hf models ls --search "$query GGUF" --sort downloads --limit 15 --no-truncate 2>/dev/null
+  local results
+  results=$(hf models ls --search "$query GGUF" --sort downloads --limit 15 --format json 2>/dev/null) || {
+    echo "[llamacpp] Error: HuggingFace search failed." >&2
+    return 1
+  }
+  printf '%s' "$results" | python3 -S -c '
+import json, sys
+try:
+    models = json.loads(sys.stdin.read())
+except Exception:
+    print("[llamacpp] Error: failed to parse search results.", file=sys.stderr)
+    raise SystemExit(1)
+if not models:
+    print("[llamacpp] No results found.")
+    raise SystemExit(0)
+fmt = "  %-70s %10s %6s"
+print(fmt % ("REPO", "DOWNLOADS", "LIKES"))
+print(fmt % ("─" * 70, "─" * 10, "─" * 6))
+for m in models:
+    repo = m.get("id", "")
+    dl = m.get("downloads", 0)
+    likes = m.get("likes", 0)
+    if dl >= 1_000_000:
+        dl_str = f"{dl / 1_000_000:.1f}M"
+    elif dl >= 1_000:
+        dl_str = f"{dl / 1_000:.0f}K"
+    else:
+        dl_str = str(dl)
+    print(fmt % (repo[:70], dl_str, likes))
+'
   echo ""
   printf '[llamacpp] Discovery results can change. To lock the current top match: llamacpp model pin %q\n' "$query"
 }

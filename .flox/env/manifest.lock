@@ -51,8 +51,7 @@
         ]
       },
       "llamacpp-launchers": {
-        "pkg-path": "flox-labs/llamacpp-launchers",
-        "pkg-group": "llamacpp-launchers"
+        "store-path": "/nix/store/nnqwk6fnkgy4kim88ywhxk74yi9hq29d-llamacpp-launchers-0.4.8"
       },
       "llamacpp-proxy": {
         "pkg-path": "flox-labs/llamacpp-proxy",
@@ -92,6 +91,24 @@
     }
   },
   "packages": [
+    {
+      "install_id": "llamacpp-launchers",
+      "store_path": "/nix/store/nnqwk6fnkgy4kim88ywhxk74yi9hq29d-llamacpp-launchers-0.4.8",
+      "system": "aarch64-darwin",
+      "priority": 5
+    },
+    {
+      "install_id": "llamacpp-launchers",
+      "store_path": "/nix/store/nnqwk6fnkgy4kim88ywhxk74yi9hq29d-llamacpp-launchers-0.4.8",
+      "system": "aarch64-linux",
+      "priority": 5
+    },
+    {
+      "install_id": "llamacpp-launchers",
+      "store_path": "/nix/store/nnqwk6fnkgy4kim88ywhxk74yi9hq29d-llamacpp-launchers-0.4.8",
+      "system": "x86_64-linux",
+      "priority": 5
+    },
     {
       "attr_path": "claude-code",
       "broken": false,
@@ -453,6 +470,68 @@
       "priority": 5
     },
     {
+      "attr_path": "flox-mcp-server",
+      "broken": false,
+      "derivation": "/nix/store/xqxwlh8kh7jl51n2b04bqb5xgcwl2g42-flox-mcp-server-0.2.2.drv",
+      "description": "MCP server for Flox package manager",
+      "install_id": "flox-mcp-server",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/mcp-server.git?rev=e727f1b0f40c70b0335091e1a876e582abcccb5a",
+      "name": "flox-mcp-server-0.2.2",
+      "pname": "flox-mcp-server",
+      "rev": "e727f1b0f40c70b0335091e1a876e582abcccb5a",
+      "rev_count": 32,
+      "rev_date": "2026-04-20T17:03:53Z",
+      "scrape_date": "2026-06-02T23:29:04.253205874Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.2.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/6y5c1wg3z3xaf7s8ffbjb0a0l8xqypm8-flox-mcp-server-0.2.2-dist",
+        "out": "/nix/store/pq350aj4njgjmgylg67ya4dsfg7q4a2j-flox-mcp-server-0.2.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "flox-mcp-server",
+      "priority": 5
+    },
+    {
+      "attr_path": "flox-mcp-server",
+      "broken": false,
+      "derivation": "/nix/store/5nas66jwjhymiqmy0lda11knp5ijcl2y-flox-mcp-server-0.2.2.drv",
+      "description": "MCP server for Flox package manager",
+      "install_id": "flox-mcp-server",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/mcp-server.git?rev=03c79180a25caf8010acefd2502a4c77b37947a1",
+      "name": "flox-mcp-server-0.2.2",
+      "pname": "flox-mcp-server",
+      "rev": "03c79180a25caf8010acefd2502a4c77b37947a1",
+      "rev_count": 33,
+      "rev_date": "2026-04-20T17:02:10Z",
+      "scrape_date": "2026-06-02T23:29:04.253209769Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.2.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/j5lb4fpxgbafxiscxqsfysqabfvwf2c3-flox-mcp-server-0.2.2-dist",
+        "out": "/nix/store/higvgc7w1pr7zxdn1jkhj1rwa7sfqf3s-flox-mcp-server-0.2.2"
+      },
+      "system": "x86_64-linux",
+      "group": "flox-mcp-server",
+      "priority": 5
+    },
+    {
       "attr_path": "gemini-cli",
       "broken": false,
       "derivation": "/nix/store/dlm2dm42k780q0jam47rmjhnzkav2f9d-gemini-cli-0.43.0.drv",
@@ -723,96 +802,6 @@
       },
       "system": "x86_64-linux",
       "group": "llamacpp",
-      "priority": 5
-    },
-    {
-      "attr_path": "llamacpp-launchers",
-      "broken": false,
-      "derivation": "/nix/store/nhwwh38h74yn073xxrzklqjk6lzjqw0h-llamacpp-launchers-0.4.6.drv",
-      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
-      "install_id": "llamacpp-launchers",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=b41a3f8f2d05928a24c51c68ba9b591547741893",
-      "name": "llamacpp-launchers-0.4.6",
-      "pname": "llamacpp-launchers",
-      "rev": "b41a3f8f2d05928a24c51c68ba9b591547741893",
-      "rev_count": 31,
-      "rev_date": "2026-06-02T03:38:47Z",
-      "scrape_date": "2026-06-02T16:13:09.046622793Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.4.6",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/2pj4wkai3jpr963s5f7wsrj7jfgzk0f8-llamacpp-launchers-0.4.6"
-      },
-      "system": "aarch64-darwin",
-      "group": "llamacpp-launchers",
-      "priority": 5
-    },
-    {
-      "attr_path": "llamacpp-launchers",
-      "broken": false,
-      "derivation": "/nix/store/qcppq8asiz4xb2qmgmyp20fk08fm8m1g-llamacpp-launchers-0.4.6.drv",
-      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
-      "install_id": "llamacpp-launchers",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=b41a3f8f2d05928a24c51c68ba9b591547741893",
-      "name": "llamacpp-launchers-0.4.6",
-      "pname": "llamacpp-launchers",
-      "rev": "b41a3f8f2d05928a24c51c68ba9b591547741893",
-      "rev_count": 31,
-      "rev_date": "2026-06-02T03:38:47Z",
-      "scrape_date": "2026-06-02T16:13:09.046623334Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.4.6",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/lw6vszipsacw4ckamd096s43mkcs9wy8-llamacpp-launchers-0.4.6"
-      },
-      "system": "aarch64-linux",
-      "group": "llamacpp-launchers",
-      "priority": 5
-    },
-    {
-      "attr_path": "llamacpp-launchers",
-      "broken": false,
-      "derivation": "/nix/store/br0r51j1qxmk8n61rp1bxj6m62jn0yv6-llamacpp-launchers-0.4.7.drv",
-      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
-      "install_id": "llamacpp-launchers",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=bccc499f05981d09b8a5664ed5be6fde565e691b",
-      "name": "llamacpp-launchers-0.4.7",
-      "pname": "llamacpp-launchers",
-      "rev": "bccc499f05981d09b8a5664ed5be6fde565e691b",
-      "rev_count": 33,
-      "rev_date": "2026-06-02T15:35:39Z",
-      "scrape_date": "2026-06-02T16:13:09.046623754Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.4.7",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/4c7xz9m4q4h6vcv46bqkh1vd5x73akiv-llamacpp-launchers-0.4.7"
-      },
-      "system": "x86_64-linux",
-      "group": "llamacpp-launchers",
       "priority": 5
     },
     {
@@ -1289,68 +1278,6 @@
       "system": "x86_64-linux",
       "group": "vram-optimizer",
       "priority": 5
-    },
-    {
-      "attr_path": "flox-mcp-server",
-      "broken": false,
-      "derivation": "/nix/store/xqxwlh8kh7jl51n2b04bqb5xgcwl2g42-flox-mcp-server-0.2.2.drv",
-      "description": "MCP server for Flox package manager",
-      "install_id": "flox-mcp-server",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/mcp-server.git?rev=e727f1b0f40c70b0335091e1a876e582abcccb5a",
-      "name": "flox-mcp-server-0.2.2",
-      "pname": "flox-mcp-server",
-      "rev": "e727f1b0f40c70b0335091e1a876e582abcccb5a",
-      "rev_count": 32,
-      "rev_date": "2026-04-20T17:03:53Z",
-      "scrape_date": "2026-06-02T23:29:04.253205874Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.2.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "dist": "/nix/store/6y5c1wg3z3xaf7s8ffbjb0a0l8xqypm8-flox-mcp-server-0.2.2-dist",
-        "out": "/nix/store/pq350aj4njgjmgylg67ya4dsfg7q4a2j-flox-mcp-server-0.2.2"
-      },
-      "system": "aarch64-darwin",
-      "group": "flox-mcp-server",
-      "priority": 5
-    },
-    {
-      "attr_path": "flox-mcp-server",
-      "broken": false,
-      "derivation": "/nix/store/5nas66jwjhymiqmy0lda11knp5ijcl2y-flox-mcp-server-0.2.2.drv",
-      "description": "MCP server for Flox package manager",
-      "install_id": "flox-mcp-server",
-      "license": "MIT",
-      "locked_url": "ssh://git@github.com/flox/mcp-server.git?rev=03c79180a25caf8010acefd2502a4c77b37947a1",
-      "name": "flox-mcp-server-0.2.2",
-      "pname": "flox-mcp-server",
-      "rev": "03c79180a25caf8010acefd2502a4c77b37947a1",
-      "rev_count": 33,
-      "rev_date": "2026-04-20T17:02:10Z",
-      "scrape_date": "2026-06-02T23:29:04.253209769Z",
-      "stabilities": [
-        "staging",
-        "unstable"
-      ],
-      "unfree": false,
-      "version": "0.2.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "dist": "/nix/store/j5lb4fpxgbafxiscxqsfysqabfvwf2c3-flox-mcp-server-0.2.2-dist",
-        "out": "/nix/store/higvgc7w1pr7zxdn1jkhj1rwa7sfqf3s-flox-mcp-server-0.2.2"
-      },
-      "system": "x86_64-linux",
-      "group": "flox-mcp-server",
-      "priority": 5
     }
   ],
   "compose": {
@@ -1396,8 +1323,7 @@
           "pkg-group": "huggingface-hub"
         },
         "llamacpp-launchers": {
-          "pkg-path": "flox-labs/llamacpp-launchers",
-          "pkg-group": "llamacpp-launchers"
+          "store-path": "/nix/store/nnqwk6fnkgy4kim88ywhxk74yi9hq29d-llamacpp-launchers-0.4.8"
         },
         "llamacpp-proxy": {
           "pkg-path": "flox-labs/llamacpp-proxy",

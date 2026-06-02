@@ -4,7 +4,7 @@ let
 in
 stdenv.mkDerivation {
   pname = "llamacpp-launchers";
-  version = "0.4.7";
+  version = "0.4.8";
   src = root;
 
   dontBuild = true;
