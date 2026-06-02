@@ -148,6 +148,12 @@ STUBEOF
 #!/usr/bin/env bash
 echo "hf $*" >> "$TEST_LOG"
 case "$*" in
+  *"models ls"*"--format json"*)
+    repo1="${HF_REPO:-unsloth/Default-GGUF}"
+    repo2="${HF_REPO_FALLBACK:-bartowski/Fallback-GGUF}"
+    printf '[{"id": "%s", "downloads": 1000}, {"id": "%s", "downloads": 500}]' "$repo1" "$repo2"
+    exit 0
+    ;;
   models\ ls\ --search*)
     printf 'modelId\tdownloads\n'
     printf '%s\t1000\n' "${HF_REPO:-unsloth/Default-GGUF}"

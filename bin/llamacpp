@@ -555,16 +555,27 @@ __llamacpp_model_search_resolve() {
   local results
   __llamacpp_validate_quant "$quant" || return 1
 
-  results=$(hf models ls --search "$query GGUF" --sort downloads --limit 20 2>/dev/null | tail -n +2)
-  if [ -z "$results" ]; then
+  # use --format json for cross-platform consistency (macOS hf cli uses
+  # fixed-width table output by default, not tab-separated)
+  results=$(hf models ls --search "$query GGUF" --sort downloads --limit 20 --format json 2>/dev/null)
+  if [ -z "$results" ] || [ "$results" = "[]" ]; then
     echo "[llamacpp] No GGUF models found for: $query" >&2
     return 1
   fi
 
+  # extract model ids from json array
+  local ids
+  ids=$(echo "$results" | grep -o '"id": *"[^"]*"' | sed 's/"id": *"//;s/"//')
+  if [ -z "$ids" ]; then
+    echo "[llamacpp] No GGUF models found for: $query" >&2
+    return 1
+  fi
+
+  # try preferred orgs first, in order
   local IFS=','
   for org in $preferred_orgs; do
     local match
-    match=$(echo "$results" | awk -F'\t' -v org="$org" '$1 ~ "^"org"/" {print $1; exit}')
+    match=$(echo "$ids" | grep "^${org}/" | head -1)
     if [ -n "$match" ] && __llamacpp_validate_hf_repo_id "$match" >/dev/null 2>&1; then
       printf '%s:%s' "$match" "$quant"
       return 0
@@ -572,14 +583,15 @@ __llamacpp_model_search_resolve() {
   done
   unset IFS
 
+  # fall back to first valid result
   local top
-  while IFS=$'\t' read -r top _; do
+  while IFS= read -r top; do
     [ -n "$top" ] || continue
     if __llamacpp_validate_hf_repo_id "$top" >/dev/null 2>&1; then
       printf '%s:%s' "$top" "$quant"
       return 0
     fi
-  done <<< "$results"
+  done <<< "$ids"
 
   echo "[llamacpp] Could not resolve a valid org/repo GGUF model for: $query" >&2
   return 1
@@ -592,7 +604,7 @@ __llamacpp_model_search() {
     return 1
   fi
   echo "[llamacpp] Searching HuggingFace for GGUF models matching: $query"
-  hf models ls --search "$query GGUF" --sort downloads --limit 15 2>/dev/null
+  hf models ls --search "$query GGUF" --sort downloads --limit 15 --no-truncate 2>/dev/null
   echo ""
   printf '[llamacpp] Discovery results can change. To lock the current top match: llamacpp model pin %q\n' "$query"
 }
