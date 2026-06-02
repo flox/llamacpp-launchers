@@ -25,6 +25,14 @@
         "pkg-path": "flox/deepseek-tui",
         "pkg-group": "deepseek-tui"
       },
+      "flox-mcp-server": {
+        "pkg-path": "flox/flox-mcp-server",
+        "pkg-group": "flox-mcp-server",
+        "systems": [
+          "aarch64-darwin",
+          "x86_64-linux"
+        ]
+      },
       "gemini-cli": {
         "pkg-path": "flox/gemini-cli",
         "pkg-group": "gemini-cli"
@@ -35,7 +43,16 @@
       },
       "llamacpp": {
         "pkg-path": "flox-labs/llamacpp",
-        "pkg-group": "llamacpp"
+        "pkg-group": "llamacpp",
+        "systems": [
+          "aarch64-darwin",
+          "aarch64-linux",
+          "x86_64-linux"
+        ]
+      },
+      "llamacpp-launchers": {
+        "pkg-path": "flox-labs/llamacpp-launchers",
+        "pkg-group": "llamacpp-launchers"
       },
       "llamacpp-proxy": {
         "pkg-path": "flox-labs/llamacpp-proxy",
@@ -51,7 +68,7 @@
       }
     },
     "hook": {
-      "on-activate": "  cat <<'BANNER'\n\n  llamacpp - local model runtime for coding agents\n\n  Quick start:\n    llamacpp launch claude --model qwen3-coder           # auto-selects best GGUF, configures VRAM\n    llamacpp launch codex --model qwen3-coder\n    llamacpp launch crush --model qwen3-coder\n    llamacpp launch deepseek --model qwen3-coder\n    llamacpp launch gemini --model qwen3-coder\n    llamacpp launch aider --model qwen3-coder\n    llamacpp launch opencode --model qwen3-coder\n\n  Find models:\n    llamacpp model search qwen3                          # search HuggingFace for GGUF models\n    llamacpp model search devstral                       # try different model families\n    llamacpp model search llama                          # browse what's available\n\n  Model spec formats:\n    qwen3-coder                                          # search term (auto-resolves)\n    unsloth/Qwen3-Coder-Next-GGUF:Q4_K_M                # HuggingFace repo + quantization\n    /path/to/model.gguf                                  # local file\n\n  Context vs speed:\n    llamacpp launch claude --model qwen3-coder --big-context   # more context, slightly slower\n    llamacpp launch claude --model qwen3-coder --max-context   # maximum context window\n\n  Manual tuning:\n    llamacpp launch claude --model qwen3-coder --gpu-layers 25 --ctx-size 65536\n\n  Service management:\n    flox services status                                 # check running services\n    flox services logs llama-server                      # view server logs\n    flox services logs llamacpp-proxy                    # view proxy logs\n\n  More: llamacpp help                                    readme\n\nBANNER\n"
+      "on-activate": "  export LLAMACPP_HOST=\"${LLAMACPP_HOST:-127.0.0.1}\"\n  export LLAMACPP_PORT=\"${LLAMACPP_PORT:-8080}\"\n  export LLAMACPP_API_KEY=\"${LLAMACPP_API_KEY:-llamacpp-local}\"\n  export LLAMACPP_MODEL=\"${LLAMACPP_MODEL:-}\"\n\n  cat <<'BANNER'\n\n  llamacpp - local model runtime for coding agents\n\n  Quick start:\n    llamacpp launch claude --model qwen3-coder           # auto-selects best GGUF, configures VRAM\n    llamacpp launch codex --model qwen3-coder\n    llamacpp launch crush --model qwen3-coder\n    llamacpp launch deepseek --model qwen3-coder\n    llamacpp launch gemini --model qwen3-coder\n    llamacpp launch aider --model qwen3-coder\n    llamacpp launch opencode --model qwen3-coder\n\n  Find models:\n    llamacpp model search qwen3                          # search HuggingFace for GGUF models\n    llamacpp model search devstral                       # try different model families\n    llamacpp model search llama                          # browse what's available\n\n  Model spec formats:\n    qwen3-coder                                          # search term (auto-resolves)\n    unsloth/Qwen3-Coder-Next-GGUF:Q4_K_M                # HuggingFace repo + quantization\n    /path/to/model.gguf                                  # local file\n\n  Context vs speed:\n    llamacpp launch claude --model qwen3-coder --big-context   # more context, slightly slower\n    llamacpp launch claude --model qwen3-coder --max-context   # maximum context window\n\n  Manual tuning:\n    llamacpp launch claude --model qwen3-coder --gpu-layers 25 --ctx-size 65536\n\n  Service management:\n    flox services status                                 # check running services\n    flox services logs llama-server                      # view server logs\n    flox services logs llamacpp-proxy                    # view proxy logs\n\n  More: llamacpp help                                    readme\n\nBANNER\n"
     },
     "profile": {
       "bash": "  source \"$FLOX_ENV/share/llamacpp-launchers/llamacpp.sh\"\n",
@@ -67,7 +84,7 @@
     },
     "services": {
       "llama-server": {
-        "command": "  [ -f \"$FLOX_ENV_CACHE/llama-server.env\" ] && . \"$FLOX_ENV_CACHE/llama-server.env\"\n  model_spec=$(cat \"$FLOX_ENV_CACHE/llama-server.model\" 2>/dev/null)\n  if [ -z \"$model_spec\" ]; then\n    # no model configured: download a small placeholder so the service starts\n    model_spec=\"unsloth/SmolLM2-135M-Instruct-GGUF:Q8_0\"\n    printf '%s' \"$model_spec\" > \"$FLOX_ENV_CACHE/llama-server.model\"\n    echo \"[llamacpp] No model configured. Using placeholder: $model_spec (145 MB)\" >&2\n    echo \"[llamacpp] Run 'llamacpp launch <harness> --model <spec>' to use a better model.\" >&2\n  fi\n  case \"$model_spec\" in\n    *.gguf) model_flag=\"--model\" ;;\n    *)      model_flag=\"--hf-repo\" ;;\n  esac\n  exec llama-server \\\n    $model_flag \"$model_spec\" \\\n    --host \"${LLAMACPP_HOST:-127.0.0.1}\" \\\n    --port \"${LLAMACPP_PORT:-8080}\" \\\n    --ctx-size \"${LLAMACPP_CTX_SIZE:-65536}\" \\\n    --n-gpu-layers \"${LLAMACPP_GPU_LAYERS:-99}\" \\\n    --api-key \"${LLAMACPP_API_KEY:-llamacpp-local}\" \\\n    --jinja \\\n    --flash-attn on\n"
+        "command": "  [ -f \"$FLOX_ENV_CACHE/llama-server.env\" ] && . \"$FLOX_ENV_CACHE/llama-server.env\"\n  model_spec=$(cat \"$FLOX_ENV_CACHE/llama-server.model\" 2>/dev/null)\n  if [ -z \"$model_spec\" ]; then\n    # no model configured: download a small placeholder so the service starts\n    model_spec=\"unsloth/SmolLM2-135M-Instruct-GGUF:Q8_0\"\n    printf '%s' \"$model_spec\" > \"$FLOX_ENV_CACHE/llama-server.model\"\n    echo \"[llamacpp] No model configured. Using placeholder: $model_spec (145 MB)\" >&2\n    echo \"[llamacpp] Run 'llamacpp launch <harness> --model <spec>' to use a better model.\" >&2\n  fi\n  case \"$model_spec\" in\n    *.gguf) model_flag=\"--model\" ;;\n    *)      model_flag=\"--hf-repo\" ;;\n  esac\n  exec llama-server \\\n    $model_flag \"$model_spec\" \\\n    --host \"${LLAMACPP_HOST:-127.0.0.1}\" \\\n    --port \"${LLAMACPP_PORT:-8080}\" \\\n    --ctx-size \"${LLAMACPP_CTX_SIZE:-65536}\" \\\n    --n-gpu-layers \"${LLAMACPP_GPU_LAYERS:-99}\" \\\n    --api-key \"${LLAMACPP_API_KEY:-llamacpp-local}\" \\\n    --jinja \\\n    --flash-attn on \\\n    --no-mmproj\n"
       },
       "llamacpp-proxy": {
         "command": "  [ -f \"$FLOX_ENV_CACHE/llama-server.env\" ] && . \"$FLOX_ENV_CACHE/llama-server.env\"\n  exec llamacpp-proxy \\\n    --listen \"${LLAMACPP_HOST:-127.0.0.1}:${LLAMACPP_PROXY_PORT:-8081}\" \\\n    --backend \"${LLAMACPP_HOST:-127.0.0.1}:${LLAMACPP_PORT:-8080}\" \\\n    --backend-api-key \"${LLAMACPP_API_KEY:-llamacpp-local}\"\n"
@@ -88,7 +105,7 @@
       "rev": "590bf7840f34d09717966bb31033f299ae870367",
       "rev_count": 5620,
       "rev_date": "2026-06-02T12:31:19Z",
-      "scrape_date": "2026-06-02T15:39:54.177380035Z",
+      "scrape_date": "2026-06-02T16:13:09.046577445Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -118,7 +135,7 @@
       "rev": "590bf7840f34d09717966bb31033f299ae870367",
       "rev_count": 5620,
       "rev_date": "2026-06-02T12:31:19Z",
-      "scrape_date": "2026-06-02T15:39:54.177418063Z",
+      "scrape_date": "2026-06-02T16:13:09.046581591Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -148,7 +165,7 @@
       "rev": "590bf7840f34d09717966bb31033f299ae870367",
       "rev_count": 5620,
       "rev_date": "2026-06-02T12:31:19Z",
-      "scrape_date": "2026-06-02T15:39:54.177466286Z",
+      "scrape_date": "2026-06-02T16:13:09.046582232Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -178,7 +195,7 @@
       "rev": "d58ac51aed2bfb9c25e2c2df6391b9081a16b2bb",
       "rev_count": 5602,
       "rev_date": "2026-06-02T02:04:27Z",
-      "scrape_date": "2026-06-02T15:39:54.177575312Z",
+      "scrape_date": "2026-06-02T16:13:09.046586909Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -208,7 +225,7 @@
       "rev": "d58ac51aed2bfb9c25e2c2df6391b9081a16b2bb",
       "rev_count": 5602,
       "rev_date": "2026-06-02T02:04:27Z",
-      "scrape_date": "2026-06-02T15:39:54.177617846Z",
+      "scrape_date": "2026-06-02T16:13:09.046587530Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -238,7 +255,7 @@
       "rev": "d58ac51aed2bfb9c25e2c2df6391b9081a16b2bb",
       "rev_count": 5602,
       "rev_date": "2026-06-02T02:04:27Z",
-      "scrape_date": "2026-06-02T15:39:54.177658859Z",
+      "scrape_date": "2026-06-02T16:13:09.046589142Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -268,7 +285,7 @@
       "rev": "ec0dd4c37eabe9042c0d7dccbe550d407b51a28b",
       "rev_count": 3677,
       "rev_date": "2026-05-20T12:30:23Z",
-      "scrape_date": "2026-06-02T15:39:54.177795617Z",
+      "scrape_date": "2026-06-02T16:13:09.046593248Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -298,7 +315,7 @@
       "rev": "ec0dd4c37eabe9042c0d7dccbe550d407b51a28b",
       "rev_count": 3677,
       "rev_date": "2026-05-20T12:30:23Z",
-      "scrape_date": "2026-06-02T15:39:54.177803739Z",
+      "scrape_date": "2026-06-02T16:13:09.046593739Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -328,7 +345,7 @@
       "rev": "ec0dd4c37eabe9042c0d7dccbe550d407b51a28b",
       "rev_count": 3677,
       "rev_date": "2026-05-20T12:30:23Z",
-      "scrape_date": "2026-06-02T15:39:54.177830389Z",
+      "scrape_date": "2026-06-02T16:13:09.046594230Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -358,7 +375,7 @@
       "rev": "862ee3f3913627276fe0139e5bebfc1dfeb459fc",
       "rev_count": 3793,
       "rev_date": "2026-05-21T07:45:06Z",
-      "scrape_date": "2026-06-02T15:39:54.177951093Z",
+      "scrape_date": "2026-06-02T16:13:09.046599117Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -388,7 +405,7 @@
       "rev": "862ee3f3913627276fe0139e5bebfc1dfeb459fc",
       "rev_count": 3793,
       "rev_date": "2026-05-21T07:45:06Z",
-      "scrape_date": "2026-06-02T15:39:54.177959085Z",
+      "scrape_date": "2026-06-02T16:13:09.046599578Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -418,7 +435,7 @@
       "rev": "862ee3f3913627276fe0139e5bebfc1dfeb459fc",
       "rev_count": 3793,
       "rev_date": "2026-05-21T07:45:06Z",
-      "scrape_date": "2026-06-02T15:39:54.177964573Z",
+      "scrape_date": "2026-06-02T16:13:09.046600059Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -448,7 +465,7 @@
       "rev": "e7d9eb11648f4a9a8aa4a5270776538cda9098ea",
       "rev_count": 3849,
       "rev_date": "2026-05-22T07:36:53Z",
-      "scrape_date": "2026-06-02T15:39:54.178031034Z",
+      "scrape_date": "2026-06-02T16:13:09.046604225Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -478,7 +495,7 @@
       "rev": "e7d9eb11648f4a9a8aa4a5270776538cda9098ea",
       "rev_count": 3849,
       "rev_date": "2026-05-22T07:36:53Z",
-      "scrape_date": "2026-06-02T15:39:54.178054901Z",
+      "scrape_date": "2026-06-02T16:13:09.046604706Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -508,7 +525,7 @@
       "rev": "e7d9eb11648f4a9a8aa4a5270776538cda9098ea",
       "rev_count": 3849,
       "rev_date": "2026-05-22T07:36:53Z",
-      "scrape_date": "2026-06-02T15:39:54.178059758Z",
+      "scrape_date": "2026-06-02T16:13:09.046605076Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -538,7 +555,7 @@
       "rev": "cdbf720010f3cc6bef457b18e15d3eecc95915e3",
       "rev_count": 5623,
       "rev_date": "2026-06-02T12:42:31Z",
-      "scrape_date": "2026-06-02T15:39:54.178113360Z",
+      "scrape_date": "2026-06-02T16:13:09.046610785Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -569,7 +586,7 @@
       "rev": "cdbf720010f3cc6bef457b18e15d3eecc95915e3",
       "rev_count": 5623,
       "rev_date": "2026-06-02T12:42:31Z",
-      "scrape_date": "2026-06-02T15:39:54.178121782Z",
+      "scrape_date": "2026-06-02T16:13:09.046611356Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -600,7 +617,7 @@
       "rev": "cdbf720010f3cc6bef457b18e15d3eecc95915e3",
       "rev_count": 5623,
       "rev_date": "2026-06-02T12:42:31Z",
-      "scrape_date": "2026-06-02T15:39:54.178136786Z",
+      "scrape_date": "2026-06-02T16:13:09.046611926Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -631,7 +648,7 @@
       "rev": "3ebc843f45bd65e90807a232b7b797e448f1dbd9",
       "rev_count": 5,
       "rev_date": "2026-05-30T16:39:07Z",
-      "scrape_date": "2026-06-02T15:39:54.178184217Z",
+      "scrape_date": "2026-06-02T16:13:09.046616834Z",
       "stabilities": [
         "unstable"
       ],
@@ -661,7 +678,7 @@
       "rev": "e49972c6f1e4944ba64c95ccd1d89350255f270d",
       "rev_count": 6,
       "rev_date": "2026-05-30T17:05:07Z",
-      "scrape_date": "2026-06-02T15:39:54.178191920Z",
+      "scrape_date": "2026-06-02T16:13:09.046617505Z",
       "stabilities": [
         "unstable"
       ],
@@ -691,7 +708,7 @@
       "rev": "e49972c6f1e4944ba64c95ccd1d89350255f270d",
       "rev_count": 6,
       "rev_date": "2026-05-30T17:05:07Z",
-      "scrape_date": "2026-06-02T15:39:54.178197818Z",
+      "scrape_date": "2026-06-02T16:13:09.046617976Z",
       "stabilities": [
         "unstable"
       ],
@@ -709,6 +726,96 @@
       "priority": 5
     },
     {
+      "attr_path": "llamacpp-launchers",
+      "broken": false,
+      "derivation": "/nix/store/nhwwh38h74yn073xxrzklqjk6lzjqw0h-llamacpp-launchers-0.4.6.drv",
+      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
+      "install_id": "llamacpp-launchers",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=b41a3f8f2d05928a24c51c68ba9b591547741893",
+      "name": "llamacpp-launchers-0.4.6",
+      "pname": "llamacpp-launchers",
+      "rev": "b41a3f8f2d05928a24c51c68ba9b591547741893",
+      "rev_count": 31,
+      "rev_date": "2026-06-02T03:38:47Z",
+      "scrape_date": "2026-06-02T16:13:09.046622793Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.4.6",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/2pj4wkai3jpr963s5f7wsrj7jfgzk0f8-llamacpp-launchers-0.4.6"
+      },
+      "system": "aarch64-darwin",
+      "group": "llamacpp-launchers",
+      "priority": 5
+    },
+    {
+      "attr_path": "llamacpp-launchers",
+      "broken": false,
+      "derivation": "/nix/store/qcppq8asiz4xb2qmgmyp20fk08fm8m1g-llamacpp-launchers-0.4.6.drv",
+      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
+      "install_id": "llamacpp-launchers",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=b41a3f8f2d05928a24c51c68ba9b591547741893",
+      "name": "llamacpp-launchers-0.4.6",
+      "pname": "llamacpp-launchers",
+      "rev": "b41a3f8f2d05928a24c51c68ba9b591547741893",
+      "rev_count": 31,
+      "rev_date": "2026-06-02T03:38:47Z",
+      "scrape_date": "2026-06-02T16:13:09.046623334Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.4.6",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/lw6vszipsacw4ckamd096s43mkcs9wy8-llamacpp-launchers-0.4.6"
+      },
+      "system": "aarch64-linux",
+      "group": "llamacpp-launchers",
+      "priority": 5
+    },
+    {
+      "attr_path": "llamacpp-launchers",
+      "broken": false,
+      "derivation": "/nix/store/br0r51j1qxmk8n61rp1bxj6m62jn0yv6-llamacpp-launchers-0.4.7.drv",
+      "description": "Shell wrapper for managing llama-server, GGUF models, and coding agent harnesses",
+      "install_id": "llamacpp-launchers",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/llamacpp-launchers?rev=bccc499f05981d09b8a5664ed5be6fde565e691b",
+      "name": "llamacpp-launchers-0.4.7",
+      "pname": "llamacpp-launchers",
+      "rev": "bccc499f05981d09b8a5664ed5be6fde565e691b",
+      "rev_count": 33,
+      "rev_date": "2026-06-02T15:35:39Z",
+      "scrape_date": "2026-06-02T16:13:09.046623754Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.4.7",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/4c7xz9m4q4h6vcv46bqkh1vd5x73akiv-llamacpp-launchers-0.4.7"
+      },
+      "system": "x86_64-linux",
+      "group": "llamacpp-launchers",
+      "priority": 5
+    },
+    {
       "attr_path": "llamacpp-proxy",
       "broken": false,
       "derivation": "/nix/store/dpm7xj1vy31611qj8c86nmcrgp0x4sqn-llamacpp-proxy-0.4.2.drv",
@@ -721,7 +828,7 @@
       "rev": "4d6f7b0758e329b8928241895160229a87646747",
       "rev_count": 3,
       "rev_date": "2026-06-01T19:48:11Z",
-      "scrape_date": "2026-06-02T15:39:54.178243328Z",
+      "scrape_date": "2026-06-02T16:13:09.046628301Z",
       "stabilities": [
         "stable",
         "staging",
@@ -752,7 +859,7 @@
       "rev": "4d6f7b0758e329b8928241895160229a87646747",
       "rev_count": 3,
       "rev_date": "2026-06-01T19:48:11Z",
-      "scrape_date": "2026-06-02T15:39:54.178249086Z",
+      "scrape_date": "2026-06-02T16:13:09.046628852Z",
       "stabilities": [
         "stable",
         "staging",
@@ -783,7 +890,7 @@
       "rev": "4d6f7b0758e329b8928241895160229a87646747",
       "rev_count": 3,
       "rev_date": "2026-06-01T19:48:11Z",
-      "scrape_date": "2026-06-02T15:39:54.178254174Z",
+      "scrape_date": "2026-06-02T16:13:09.046629242Z",
       "stabilities": [
         "stable",
         "staging",
@@ -814,7 +921,7 @@
       "rev": "55ae1ca7e6566adaebc535467e2dc408f157e9af",
       "rev_count": 5177,
       "rev_date": "2026-05-31T01:31:23Z",
-      "scrape_date": "2026-06-02T15:39:54.178295998Z",
+      "scrape_date": "2026-06-02T16:13:09.046633459Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -844,7 +951,7 @@
       "rev": "55ae1ca7e6566adaebc535467e2dc408f157e9af",
       "rev_count": 5177,
       "rev_date": "2026-05-31T01:31:23Z",
-      "scrape_date": "2026-06-02T15:39:54.178302658Z",
+      "scrape_date": "2026-06-02T16:13:09.046634Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -874,7 +981,7 @@
       "rev": "55ae1ca7e6566adaebc535467e2dc408f157e9af",
       "rev_count": 5177,
       "rev_date": "2026-05-31T01:31:23Z",
-      "scrape_date": "2026-06-02T15:39:54.178307395Z",
+      "scrape_date": "2026-06-02T16:13:09.046634420Z",
       "stabilities": [
         "staging",
         "unstable"
@@ -1103,7 +1210,7 @@
       "rev": "39eec8fcc2a562133818b03b88a64a6e242c34f4",
       "rev_count": 6,
       "rev_date": "2026-06-02T03:55:40Z",
-      "scrape_date": "2026-06-02T15:39:54.178500068Z",
+      "scrape_date": "2026-06-02T16:13:09.046672187Z",
       "stabilities": [
         "stable",
         "staging",
@@ -1134,7 +1241,7 @@
       "rev": "39eec8fcc2a562133818b03b88a64a6e242c34f4",
       "rev_count": 6,
       "rev_date": "2026-06-02T03:55:40Z",
-      "scrape_date": "2026-06-02T15:39:54.178507209Z",
+      "scrape_date": "2026-06-02T16:13:09.046672788Z",
       "stabilities": [
         "stable",
         "staging",
@@ -1165,7 +1272,7 @@
       "rev": "39eec8fcc2a562133818b03b88a64a6e242c34f4",
       "rev_count": 6,
       "rev_date": "2026-06-02T03:55:40Z",
-      "scrape_date": "2026-06-02T15:39:54.178512677Z",
+      "scrape_date": "2026-06-02T16:13:09.046673238Z",
       "stabilities": [
         "stable",
         "staging",
@@ -1182,6 +1289,205 @@
       "system": "x86_64-linux",
       "group": "vram-optimizer",
       "priority": 5
+    },
+    {
+      "attr_path": "flox-mcp-server",
+      "broken": false,
+      "derivation": "/nix/store/xqxwlh8kh7jl51n2b04bqb5xgcwl2g42-flox-mcp-server-0.2.2.drv",
+      "description": "MCP server for Flox package manager",
+      "install_id": "flox-mcp-server",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/mcp-server.git?rev=e727f1b0f40c70b0335091e1a876e582abcccb5a",
+      "name": "flox-mcp-server-0.2.2",
+      "pname": "flox-mcp-server",
+      "rev": "e727f1b0f40c70b0335091e1a876e582abcccb5a",
+      "rev_count": 32,
+      "rev_date": "2026-04-20T17:03:53Z",
+      "scrape_date": "2026-06-02T23:29:04.253205874Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.2.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/6y5c1wg3z3xaf7s8ffbjb0a0l8xqypm8-flox-mcp-server-0.2.2-dist",
+        "out": "/nix/store/pq350aj4njgjmgylg67ya4dsfg7q4a2j-flox-mcp-server-0.2.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "flox-mcp-server",
+      "priority": 5
+    },
+    {
+      "attr_path": "flox-mcp-server",
+      "broken": false,
+      "derivation": "/nix/store/5nas66jwjhymiqmy0lda11knp5ijcl2y-flox-mcp-server-0.2.2.drv",
+      "description": "MCP server for Flox package manager",
+      "install_id": "flox-mcp-server",
+      "license": "MIT",
+      "locked_url": "ssh://git@github.com/flox/mcp-server.git?rev=03c79180a25caf8010acefd2502a4c77b37947a1",
+      "name": "flox-mcp-server-0.2.2",
+      "pname": "flox-mcp-server",
+      "rev": "03c79180a25caf8010acefd2502a4c77b37947a1",
+      "rev_count": 33,
+      "rev_date": "2026-04-20T17:02:10Z",
+      "scrape_date": "2026-06-02T23:29:04.253209769Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.2.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "dist": "/nix/store/j5lb4fpxgbafxiscxqsfysqabfvwf2c3-flox-mcp-server-0.2.2-dist",
+        "out": "/nix/store/higvgc7w1pr7zxdn1jkhj1rwa7sfqf3s-flox-mcp-server-0.2.2"
+      },
+      "system": "x86_64-linux",
+      "group": "flox-mcp-server",
+      "priority": 5
     }
-  ]
+  ],
+  "compose": {
+    "composer": {
+      "schema-version": "1.12.0",
+      "install": {
+        "bat": {
+          "pkg-path": "bat"
+        },
+        "claude-code": {
+          "pkg-path": "flox/claude-code",
+          "pkg-group": "claude-code"
+        },
+        "codex": {
+          "pkg-path": "flox/codex",
+          "pkg-group": "codex"
+        },
+        "crush": {
+          "pkg-path": "flox/crush",
+          "pkg-group": "crush"
+        },
+        "curl": {
+          "pkg-path": "curl"
+        },
+        "deepseek-tui": {
+          "pkg-path": "flox/deepseek-tui",
+          "pkg-group": "deepseek-tui"
+        },
+        "flox-mcp-server": {
+          "pkg-path": "flox/flox-mcp-server",
+          "pkg-group": "flox-mcp-server",
+          "systems": [
+            "aarch64-darwin",
+            "x86_64-linux"
+          ]
+        },
+        "gemini-cli": {
+          "pkg-path": "flox/gemini-cli",
+          "pkg-group": "gemini-cli"
+        },
+        "huggingface-hub": {
+          "pkg-path": "flox/huggingface-hub",
+          "pkg-group": "huggingface-hub"
+        },
+        "llamacpp-launchers": {
+          "pkg-path": "flox-labs/llamacpp-launchers",
+          "pkg-group": "llamacpp-launchers"
+        },
+        "llamacpp-proxy": {
+          "pkg-path": "flox-labs/llamacpp-proxy",
+          "pkg-group": "llamacpp-proxy"
+        },
+        "opencode": {
+          "pkg-path": "flox/opencode",
+          "pkg-group": "opencode"
+        },
+        "vram-optimizer": {
+          "pkg-path": "flox-labs/vram-optimizer",
+          "pkg-group": "vram-optimizer"
+        }
+      },
+      "hook": {
+        "on-activate": "  cat <<'BANNER'\n\n  llamacpp - local model runtime for coding agents\n\n  Quick start:\n    llamacpp launch claude --model qwen3-coder           # auto-selects best GGUF, configures VRAM\n    llamacpp launch codex --model qwen3-coder\n    llamacpp launch crush --model qwen3-coder\n    llamacpp launch deepseek --model qwen3-coder\n    llamacpp launch gemini --model qwen3-coder\n    llamacpp launch aider --model qwen3-coder\n    llamacpp launch opencode --model qwen3-coder\n\n  Find models:\n    llamacpp model search qwen3                          # search HuggingFace for GGUF models\n    llamacpp model search devstral                       # try different model families\n    llamacpp model search llama                          # browse what's available\n\n  Model spec formats:\n    qwen3-coder                                          # search term (auto-resolves)\n    unsloth/Qwen3-Coder-Next-GGUF:Q4_K_M                # HuggingFace repo + quantization\n    /path/to/model.gguf                                  # local file\n\n  Context vs speed:\n    llamacpp launch claude --model qwen3-coder --big-context   # more context, slightly slower\n    llamacpp launch claude --model qwen3-coder --max-context   # maximum context window\n\n  Manual tuning:\n    llamacpp launch claude --model qwen3-coder --gpu-layers 25 --ctx-size 65536\n\n  Service management:\n    flox services status                                 # check running services\n    flox services logs llama-server                      # view server logs\n    flox services logs llamacpp-proxy                    # view proxy logs\n\n  More: llamacpp help                                    readme\n\nBANNER\n"
+      },
+      "profile": {
+        "bash": "  source \"$FLOX_ENV/share/llamacpp-launchers/llamacpp.sh\"\n",
+        "zsh": "  function llamacpp() { command llamacpp \"$@\"; }\n  function readme() { command llamacpp readme; }\n",
+        "fish": "  function readme --description \"display llamacpp README\"\n    llamacpp readme\n  end\n"
+      },
+      "options": {
+        "systems": [
+          "aarch64-darwin",
+          "aarch64-linux",
+          "x86_64-linux"
+        ]
+      },
+      "services": {
+        "llamacpp-proxy": {
+          "command": "  [ -f \"$FLOX_ENV_CACHE/llama-server.env\" ] && . \"$FLOX_ENV_CACHE/llama-server.env\"\n  exec llamacpp-proxy \\\n    --listen \"${LLAMACPP_HOST:-127.0.0.1}:${LLAMACPP_PROXY_PORT:-8081}\" \\\n    --backend \"${LLAMACPP_HOST:-127.0.0.1}:${LLAMACPP_PORT:-8080}\" \\\n    --backend-api-key \"${LLAMACPP_API_KEY:-llamacpp-local}\"\n"
+        }
+      },
+      "include": {
+        "environments": [
+          {
+            "remote": "flox-labs/llamacpp-server"
+          }
+        ]
+      }
+    },
+    "include": [
+      {
+        "manifest": {
+          "schema-version": "1.12.0",
+          "install": {
+            "llamacpp": {
+              "pkg-path": "flox-labs/llamacpp",
+              "pkg-group": "llamacpp",
+              "systems": [
+                "aarch64-darwin",
+                "aarch64-linux",
+                "x86_64-linux"
+              ]
+            }
+          },
+          "hook": {
+            "on-activate": "  export LLAMACPP_HOST=\"${LLAMACPP_HOST:-127.0.0.1}\"\n  export LLAMACPP_PORT=\"${LLAMACPP_PORT:-8080}\"\n  export LLAMACPP_API_KEY=\"${LLAMACPP_API_KEY:-llamacpp-local}\"\n  export LLAMACPP_MODEL=\"${LLAMACPP_MODEL:-}\"\n"
+          },
+          "profile": {},
+          "options": {
+            "systems": [
+              "aarch64-darwin",
+              "aarch64-linux",
+              "x86_64-linux"
+            ]
+          },
+          "services": {
+            "llama-server": {
+              "command": "  [ -f \"$FLOX_ENV_CACHE/llama-server.env\" ] && . \"$FLOX_ENV_CACHE/llama-server.env\"\n  model_spec=$(cat \"$FLOX_ENV_CACHE/llama-server.model\" 2>/dev/null)\n  if [ -z \"$model_spec\" ]; then\n    # no model configured: download a small placeholder so the service starts\n    model_spec=\"unsloth/SmolLM2-135M-Instruct-GGUF:Q8_0\"\n    printf '%s' \"$model_spec\" > \"$FLOX_ENV_CACHE/llama-server.model\"\n    echo \"[llamacpp] No model configured. Using placeholder: $model_spec (145 MB)\" >&2\n    echo \"[llamacpp] Run 'llamacpp launch <harness> --model <spec>' to use a better model.\" >&2\n  fi\n  case \"$model_spec\" in\n    *.gguf) model_flag=\"--model\" ;;\n    *)      model_flag=\"--hf-repo\" ;;\n  esac\n  exec llama-server \\\n    $model_flag \"$model_spec\" \\\n    --host \"${LLAMACPP_HOST:-127.0.0.1}\" \\\n    --port \"${LLAMACPP_PORT:-8080}\" \\\n    --ctx-size \"${LLAMACPP_CTX_SIZE:-65536}\" \\\n    --n-gpu-layers \"${LLAMACPP_GPU_LAYERS:-99}\" \\\n    --api-key \"${LLAMACPP_API_KEY:-llamacpp-local}\" \\\n    --jinja \\\n    --flash-attn on \\\n    --no-mmproj\n"
+            }
+          }
+        },
+        "name": "llamacpp-server",
+        "descriptor": {
+          "remote": "flox-labs/llamacpp-server"
+        }
+      }
+    ],
+    "warnings": [
+      {
+        "warning": {
+          "Overriding": [
+            "options",
+            "systems"
+          ]
+        },
+        "higher_priority_name": "Current manifest"
+      }
+    ]
+  }
 }
