@@ -61,12 +61,18 @@ root_restart_fail=$(mktemp -d "${TMPDIR:-/tmp}/llamacpp-restart-fail.XXXXXX")
 make_test_env "$root_restart_fail" old 8080
 run_launch_service_failure "$root_restart_fail" restart
 assert_contains 'flox services restart llama-server' "$root_restart_fail/log"
-assert_not_contains '^curl ' "$root_restart_fail/log"
+# initial health probe is expected before restart; assert no harness launch
 assert_not_contains '^claude ' "$root_restart_fail/log"
 assert_not_contains 'flox services restart llamacpp-proxy' "$root_restart_fail/log"
-assert_persisted_var "$root_restart_fail/cache/llama-server.env" LLAMACPP_API_KEY new
-assert_persisted_var "$root_restart_fail/cache/llama-server.live.env" LLAMACPP_LIVE_API_KEY old
-assert_no_live_state_temps "$root_restart_fail/cache"
+# stale-state fix invalidates server state on restart failure
+if [ -e "$root_restart_fail/cache/llama-server.env" ]; then
+  echo "llama-server.env should have been invalidated after restart failure" >&2
+  exit 1
+fi
+if [ -e "$root_restart_fail/cache/llama-server.live.env" ]; then
+  echo "live.env should have been invalidated after restart failure" >&2
+  exit 1
+fi
 
 # A failed restart may commit desired inputs, but it must not mark them live. The
 # next identical launch must restart instead of trusting desired state plus /health.
@@ -82,10 +88,14 @@ make_test_env "$root_start_fail" old 8080
 run_launch_service_failure "$root_start_fail" start
 assert_contains 'flox services status llama-server' "$root_start_fail/log"
 assert_contains 'flox services start llama-server' "$root_start_fail/log"
-assert_not_contains '^curl ' "$root_start_fail/log"
+# initial health probe may appear before start attempt; assert no harness launch
 assert_not_contains '^claude ' "$root_start_fail/log"
 assert_not_contains 'flox services restart llamacpp-proxy' "$root_start_fail/log"
-assert_persisted_var "$root_start_fail/cache/llama-server.live.env" LLAMACPP_LIVE_API_KEY old
+# stale-state fix invalidates live.env on start failure
+if [ -e "$root_start_fail/cache/llama-server.live.env" ]; then
+  echo "live.env should have been invalidated after start failure" >&2
+  exit 1
+fi
 
 # Unchanged backend config plus a healthy server should not restart services.
 root_same=$(mktemp -d "${TMPDIR:-/tmp}/llamacpp-same.XXXXXX")

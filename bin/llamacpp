@@ -40,6 +40,10 @@ __llamacpp_model_dir() {
   printf '%s' "$dir"
 }
 
+__llamacpp_env_file() {
+  printf '%s' "$FLOX_ENV_CACHE/llama-server.env"
+}
+
 __llamacpp_state_file() {
   printf '%s' "$FLOX_ENV_CACHE/llama-server.model"
 }
@@ -188,7 +192,8 @@ __llamacpp_atomic_write_start() {
 
 __llamacpp_write_env() {
   local host="$1" port="$2" ctx_size="$3" gpu_layers="$4" api_key="$5"
-  local env_file="$FLOX_ENV_CACHE/llama-server.env"
+  local env_file
+  env_file=$(__llamacpp_env_file) || return 1
   local tmp rc
 
   tmp=$(__llamacpp_atomic_write_start "$env_file") || return 1
@@ -205,6 +210,55 @@ __llamacpp_write_env() {
   rc=$?
   rm -f "$tmp"
   return "$rc"
+}
+
+__llamacpp_invalidate_server_state() {
+  # Clear launcher-owned service input and live-state files after a failed
+  # start/restart. Preserve downloaded GGUFs and model-search locks.
+  if [ -z "${FLOX_ENV_CACHE:-}" ]; then
+    echo "[llamacpp] Error: FLOX_ENV_CACHE is not set; refusing to clear server state." >&2
+    return 1
+  fi
+
+  local -a state_paths=(
+    "$(__llamacpp_env_file)"
+    "$(__llamacpp_state_file)"
+    "$(__llamacpp_live_state_file)"
+    "$(__llamacpp_proxy_state_file)"
+  )
+  local path
+  for path in "${state_paths[@]}"; do
+    if [ -e "$path" ] || [ -L "$path" ]; then
+      rm -f -- "$path" || {
+        echo "[llamacpp] Warning: failed to clear stale state file: $path" >&2
+        return 1
+      }
+    fi
+  done
+}
+
+__llamacpp_launch_failure_diagnostic() {
+  local reason="$1" resolved="$2" host="$3" port="$4" ctx_size="$5" gpu_layers="$6"
+
+  echo "[llamacpp] Error: llama-server launch failed: ${reason}" >&2
+  echo "[llamacpp] Attempted config:" >&2
+  echo "[llamacpp]   model=${resolved}" >&2
+  echo "[llamacpp]   host=${host}" >&2
+  echo "[llamacpp]   port=${port}" >&2
+  echo "[llamacpp]   ctx-size=${ctx_size}" >&2
+  echo "[llamacpp]   gpu-layers=${gpu_layers}" >&2
+
+  if __llamacpp_invalidate_server_state; then
+    echo "[llamacpp] Cleared stale server state: llama-server.env, llama-server.model, live/proxy state." >&2
+    echo "[llamacpp] Preserved downloaded GGUFs and model-search locks." >&2
+  else
+    echo "[llamacpp] Warning: stale state may remain in ${FLOX_ENV_CACHE:-<unset>}." >&2
+  fi
+
+  echo "[llamacpp] Next steps:" >&2
+  echo "[llamacpp]   - inspect logs: flox services logs llama-server" >&2
+  echo "[llamacpp]   - for OOM: lower --ctx-size, use fewer --gpu-layers, or choose a smaller quant/model" >&2
+  echo "[llamacpp]   - for download failures: verify network access and the HuggingFace repo/quant" >&2
 }
 
 __llamacpp_write_model_state() {
@@ -435,7 +489,8 @@ __llamacpp_proxy_state_matches() {
 }
 
 __llamacpp_read_env_config() {
-  local env_file="$FLOX_ENV_CACHE/llama-server.env"
+  local env_file
+  env_file=$(__llamacpp_env_file) || return 1
   __LLAMACPP_PERSISTED_HOST=""
   __LLAMACPP_PERSISTED_PORT=""
   __LLAMACPP_PERSISTED_CTX_SIZE=""
@@ -808,7 +863,7 @@ __llamacpp_model_set() {
   # model set changes only the active model. Preserve any existing server
   # config so repeated model changes do not reset ports, sizing, or auth.
   # Create the env file from activation/default values only for a fresh cache.
-  if [ ! -f "$FLOX_ENV_CACHE/llama-server.env" ]; then
+  if [ ! -f "$(__llamacpp_env_file)" ]; then
     __llamacpp_write_env "$LLAMACPP_HOST" "$LLAMACPP_PORT" "$LLAMACPP_CTX_SIZE" "$LLAMACPP_GPU_LAYERS" "$LLAMACPP_API_KEY" || return 1
   fi
   echo "[llamacpp] Active model set to: $resolved"
@@ -1489,20 +1544,41 @@ __llamacpp_launch() {
   # Write desired service inputs before start/restart so the service can read
   # them. The live stamp below is updated only after the running server is
   # checked against those inputs.
-  mkdir -p "$FLOX_ENV_CACHE"
-  __llamacpp_write_model_state "$resolved" || return 1
-  __llamacpp_write_env "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" "$opt_api_key" || return 1
+  if ! mkdir -p "$FLOX_ENV_CACHE"; then
+    echo "[llamacpp] Error: failed to create FLOX_ENV_CACHE: $FLOX_ENV_CACHE" >&2
+    return 1
+  fi
+  if ! __llamacpp_write_model_state "$resolved"; then
+    echo "[llamacpp] Error: failed to write model state: $(__llamacpp_state_file)" >&2
+    return 1
+  fi
+  if ! __llamacpp_write_env "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" "$opt_api_key"; then
+    echo "[llamacpp] Error: failed to write server config: $(__llamacpp_env_file)" >&2
+    return 1
+  fi
 
   local needs_restart=0
   local needs_proxy_restart=0
+  local server_healthy=0
+  local restart_action="start"
+  local restart_reason=""
   __LLAMACPP_VERIFIED_SERVER_MODEL=""
+
+  # Probe health on every launch before trusting any cached live stamp. A dead
+  # server always gets a start/restart attempt, even when config and model match.
+  if curl -sf "http://${opt_host}:${opt_port}/health" >/dev/null 2>&1; then
+    server_healthy=1
+  fi
 
   if ! __llamacpp_live_state_matches "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" "$opt_api_key"; then
     needs_restart=1
-  elif ! curl -sf "http://${opt_host}:${opt_port}/health" >/dev/null 2>&1; then
+    restart_reason="requested model or server config differs from confirmed live state"
+  elif [ "$server_healthy" -ne 1 ]; then
     needs_restart=1
+    restart_reason="server health check failed before harness launch"
   elif ! __llamacpp_verify_server_model "$opt_host" "$opt_port" "$opt_api_key" "$resolved"; then
     needs_restart=1
+    restart_reason="running server model does not match requested model"
   fi
 
   if [ "$opt_host" != "$live_host" ] || [ "$opt_port" != "$live_port" ] || [ "$opt_api_key" != "$live_api_key" ]; then
@@ -1511,20 +1587,50 @@ __llamacpp_launch() {
 
   if [ "$needs_restart" -eq 1 ]; then
     echo "[llamacpp] Config: gpu-layers=$opt_gpu_layers ctx-size=$opt_ctx_size port=$opt_port"
-    echo "[llamacpp] Starting llama-server ..."
+    echo "[llamacpp] Starting llama-server (${restart_reason}) ..."
     if flox services status llama-server >/dev/null 2>&1; then
-      flox services restart llama-server || return 1
+      restart_action="restart"
+      if ! flox services restart llama-server; then
+        __llamacpp_launch_failure_diagnostic "service restart command failed" "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers"
+        return 1
+      fi
     else
-      flox services start llama-server || return 1
+      restart_action="start"
+      if ! flox services start llama-server; then
+        __llamacpp_launch_failure_diagnostic "service start command failed" "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers"
+        return 1
+      fi
     fi
   fi
 
-  __llamacpp_health_wait "$opt_host" "$opt_port" 120 || return 1
-  __llamacpp_verify_server_model "$opt_host" "$opt_port" "$opt_api_key" "$resolved" || return 1
-  __llamacpp_write_live_state "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" "$opt_api_key" "$__LLAMACPP_VERIFIED_SERVER_MODEL" || return 1
+  if ! __llamacpp_health_wait "$opt_host" "$opt_port" 120; then
+    if [ "$needs_restart" -eq 1 ]; then
+      __llamacpp_launch_failure_diagnostic "health check timed out after service ${restart_action}" "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers"
+    else
+      __llamacpp_launch_failure_diagnostic "server stopped before harness launch" "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers"
+    fi
+    return 1
+  fi
+
+  if ! __llamacpp_verify_server_model "$opt_host" "$opt_port" "$opt_api_key" "$resolved"; then
+    if [ "$needs_restart" -eq 1 ]; then
+      __llamacpp_launch_failure_diagnostic "model verification failed after service ${restart_action}" "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers"
+    else
+      __llamacpp_launch_failure_diagnostic "model verification failed before harness launch" "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers"
+    fi
+    return 1
+  fi
+
+  if ! __llamacpp_write_live_state "$resolved" "$opt_host" "$opt_port" "$opt_ctx_size" "$opt_gpu_layers" "$opt_api_key" "$__LLAMACPP_VERIFIED_SERVER_MODEL"; then
+    echo "[llamacpp] Error: failed to write live server state: $(__llamacpp_live_state_file)" >&2
+    return 1
+  fi
 
   if [ "$needs_proxy_restart" -eq 1 ]; then
-    __llamacpp_restart_proxy_if_running "$opt_host" "$LLAMACPP_PROXY_PORT" "$opt_port" "$opt_api_key" || return 1
+    if ! __llamacpp_restart_proxy_if_running "$opt_host" "$LLAMACPP_PROXY_PORT" "$opt_port" "$opt_api_key"; then
+      echo "[llamacpp] Error: failed to refresh proxy for backend ${opt_host}:${opt_port}" >&2
+      return 1
+    fi
   fi
 
   # Harnesses must use the exact model ID that /v1/models verified.
@@ -1535,7 +1641,18 @@ __llamacpp_launch() {
   fi
 
   echo "[llamacpp] Launching $harness with verified model: $verified_model_id"
-  "__llamacpp_configure_${harness}" "$opt_host" "$opt_port" "$opt_api_key" "$verified_model_id" "$opt_ctx_size" "${harness_args[@]}"
+  local harness_rc
+  if "__llamacpp_configure_${harness}" "$opt_host" "$opt_port" "$opt_api_key" "$verified_model_id" "$opt_ctx_size" "${harness_args[@]}"; then
+    return 0
+  else
+    harness_rc=$?
+  fi
+  echo "[llamacpp] Error: harness '$harness' exited with status $harness_rc after server readiness passed." >&2
+  echo "[llamacpp] Harness command: __llamacpp_configure_${harness}" >&2
+  echo "[llamacpp] Server: http://${opt_host}:${opt_port}/v1" >&2
+  echo "[llamacpp] Model: $verified_model_id" >&2
+  echo "[llamacpp] Try running the harness command directly, or check the harness executable and arguments." >&2
+  return "$harness_rc"
 }
 
 __llamacpp_help() {
@@ -1601,7 +1718,13 @@ HELP
 readme() {
   local readme_path="${FLOX_ENV:-}/share/llamacpp-launchers/README.md"
   if [ ! -f "$readme_path" ]; then
-    readme_path="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]:-${(%):-%x}}")")")/share/llamacpp-launchers/README.md"
+    local script_path script_dir root_dir
+    script_path="${__LLAMACPP_SCRIPT:-${BASH_SOURCE[0]:-${(%):-%x}}}"
+    script_dir=$(cd "$(dirname "$script_path")" 2>/dev/null && pwd -P) || script_dir=""
+    if [ -n "$script_dir" ]; then
+      root_dir=$(dirname "$script_dir") || root_dir=""
+      readme_path="${root_dir}/share/llamacpp-launchers/README.md"
+    fi
   fi
   if [ ! -f "$readme_path" ]; then
     echo "[llamacpp] README not found" >&2

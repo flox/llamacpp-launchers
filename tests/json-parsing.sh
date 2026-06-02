@@ -20,7 +20,11 @@ fi
 assert_contains 'flox services restart llama-server' "$root_wrong_model/log"
 assert_contains 'running llama-server model does not match requested model' "$root_wrong_model/out"
 assert_not_contains '^claude ' "$root_wrong_model/log"
-assert_persisted_var "$root_wrong_model/cache/llama-server.live.env" LLAMACPP_LIVE_SERVER_MODEL "$root_wrong_model/model.gguf"
+# stale-state fix invalidates live.env on model mismatch failure
+if [ -e "$root_wrong_model/cache/llama-server.live.env" ]; then
+  echo "live.env should have been invalidated after model mismatch" >&2
+  exit 1
+fi
 
 # Basename or alias matches must not verify the live model. Two different paths
 # can share model.gguf, so /v1/models must equal the requested server model ID.
@@ -41,8 +45,11 @@ assert_contains 'flox services restart llama-server' "$root_same_basename/log"
 assert_contains 'Expected /v1/models id: ' "$root_same_basename/out"
 assert_contains "$root_same_basename/b/model.gguf" "$root_same_basename/out"
 assert_not_contains '^claude ' "$root_same_basename/log"
-assert_persisted_var "$root_same_basename/cache/llama-server.live.env" LLAMACPP_LIVE_MODEL "$root_same_basename/model.gguf"
-assert_persisted_var "$root_same_basename/cache/llama-server.live.env" LLAMACPP_LIVE_SERVER_MODEL "$root_same_basename/model.gguf"
+# stale-state fix invalidates live.env on model mismatch failure
+if [ -e "$root_same_basename/cache/llama-server.live.env" ]; then
+  echo "live.env should have been invalidated after basename mismatch" >&2
+  exit 1
+fi
 
 
 # /v1/models parsing must treat JSON as JSON. Commas and escaped quotes inside
