@@ -1237,27 +1237,64 @@ __llamacpp_nvidia_smi_sum_mib() {
   '
 }
 
+__llamacpp_apple_memory_mib() {
+  # query apple silicon unified memory. returns "total used" on stdout.
+  local total_bytes total_mib page_size pages_free pages_inactive used_mib
+  total_bytes=$(sysctl -n hw.memsize 2>/dev/null) || return 1
+  [ -n "$total_bytes" ] || return 1
+  total_mib=$((total_bytes / 1024 / 1024))
+
+  page_size=$(sysctl -n hw.pagesize 2>/dev/null) || page_size=16384
+  # vm_stat reports pages; free + inactive = available
+  pages_free=$(vm_stat 2>/dev/null | awk '/Pages free:/ {gsub(/\./,"",$3); print $3}')
+  pages_inactive=$(vm_stat 2>/dev/null | awk '/Pages inactive:/ {gsub(/\./,"",$3); print $3}')
+  if [ -n "$pages_free" ] && [ -n "$pages_inactive" ]; then
+    local available_mib=$(( (pages_free + pages_inactive) * page_size / 1024 / 1024 ))
+    used_mib=$((total_mib - available_mib))
+  else
+    # fallback: assume 40% used by os and apps
+    used_mib=$((total_mib * 40 / 100))
+  fi
+
+  printf '%d %d' "$total_mib" "$used_mib"
+}
+
 __llamacpp_auto_configure() {
   # Auto-determine gpu_layers and ctx_size using vram-optimizer.
   # Sets opt_gpu_layers and opt_ctx_size in the calling scope.
-  # Fails gracefully (no-op) if optimizer or nvidia-smi unavailable.
+  # Supports NVIDIA (nvidia-smi) and Apple Silicon (sysctl/vm_stat).
+  # Fails gracefully (no-op) if optimizer unavailable.
 
   if ! command -v vram-optimizer >/dev/null 2>&1; then
     return 0
   fi
-  if ! command -v nvidia-smi >/dev/null 2>&1; then
+
+  local vram_total vram_used safety_margin
+
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    # nvidia gpu: stop server to free vram before measuring
+    if flox services status llama-server >/dev/null 2>&1; then
+      flox services stop llama-server 2>/dev/null
+      sleep 2
+    fi
+    vram_total=$(__llamacpp_nvidia_smi_sum_mib memory.total) || return 0
+    vram_used=$(__llamacpp_nvidia_smi_sum_mib memory.used) || return 0
+    safety_margin=500
+  elif [ "$(uname -s)" = "Darwin" ]; then
+    # apple silicon: unified memory shared with os
+    if flox services status llama-server >/dev/null 2>&1; then
+      flox services stop llama-server 2>/dev/null
+      sleep 2
+    fi
+    local apple_mem
+    apple_mem=$(__llamacpp_apple_memory_mib) || return 0
+    vram_total=${apple_mem%% *}
+    vram_used=${apple_mem##* }
+    safety_margin=2560
+  else
     return 0
   fi
 
-  # Stop any running server to free VRAM before measuring
-  if flox services status llama-server >/dev/null 2>&1; then
-    flox services stop llama-server 2>/dev/null
-    sleep 2
-  fi
-
-  local vram_total vram_used
-  vram_total=$(__llamacpp_nvidia_smi_sum_mib memory.total) || return 0
-  vram_used=$(__llamacpp_nvidia_smi_sum_mib memory.used) || return 0
   if [ -z "$vram_total" ] || [ -z "$vram_used" ]; then
     return 0
   fi
@@ -1289,6 +1326,7 @@ __llamacpp_auto_configure() {
     --model "$optimizer_model"
     --vram-total-mib "$vram_total"
     --vram-used-mib "$vram_used"
+    --safety-margin-mib "$safety_margin"
     --context-priority "$opt_context_priority"
   )
   if [ -n "$optimizer_quant" ]; then
@@ -1302,7 +1340,9 @@ __llamacpp_auto_configure() {
 
   if [ "$exit_code" -ne 0 ]; then
     echo "[llamacpp] vram-optimizer: $output" >&2
-    echo "[llamacpp] Model may be too large for available VRAM (${vram_total} MiB total, ${vram_used} MiB used)." >&2
+    local mem_label="VRAM"
+    [ "$(uname -s)" = "Darwin" ] && mem_label="memory"
+    echo "[llamacpp] Model may be too large for available ${mem_label} (${vram_total} MiB total, ${vram_used} MiB used, ${safety_margin} MiB safety margin)." >&2
     echo "[llamacpp] Options:" >&2
     echo "[llamacpp]   --gpu-layers <N> --ctx-size <N>  (manual override, experiment until it loads)" >&2
     echo "[llamacpp]   --model <repo>:Q3_K_M            (smaller quantization)" >&2
