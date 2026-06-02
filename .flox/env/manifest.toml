@@ -111,8 +111,11 @@ command = '''
   [ -f "$FLOX_ENV_CACHE/llama-server.env" ] && . "$FLOX_ENV_CACHE/llama-server.env"
   model_spec=$(cat "$FLOX_ENV_CACHE/llama-server.model" 2>/dev/null)
   if [ -z "$model_spec" ]; then
-    echo "[llamacpp] No model configured. Run: llamacpp model set <spec>" >&2
-    exit 1
+    # no model configured: download a small placeholder so the service starts
+    model_spec="unsloth/SmolLM2-135M-Instruct-GGUF:Q8_0"
+    printf '%s' "$model_spec" > "$FLOX_ENV_CACHE/llama-server.model"
+    echo "[llamacpp] No model configured. Using placeholder: $model_spec (145 MB)" >&2
+    echo "[llamacpp] Run 'llamacpp launch <harness> --model <spec>' to use a better model." >&2
   fi
   case "$model_spec" in
     *.gguf) model_flag="--model" ;;
