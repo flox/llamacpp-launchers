@@ -1,4 +1,4 @@
-# llamacpp
+# llamacpp launchers
 
 A Flox environment for running local GGUF models via llama-server and connecting them to coding agent harnesses. Runs on **Linux (x86_64, aarch64) with NVIDIA CUDA** and **macOS (Apple Silicon)**. Models are automatically downloaded from HuggingFace, GPU memory is auto-configured, and a translation proxy handles protocol differences so every harness works out of the box.
 
