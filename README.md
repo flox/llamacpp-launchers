@@ -61,6 +61,20 @@ llamacpp launch deepseek --model qwen3-coder -- --yolo
 
 Claude Code is always launched with `--bare` to prevent OAuth conflicts when using local models. This disables OAuth/keychain lookups (irrelevant for local inference) and avoids the "Auth conflict" warning.
 
+## Ask Flox
+
+`ask-flox` launches Claude Code with a `search_flox_docs` MCP tool that retrieves cited passages from a baked, offline index of the Flox docs and blog — grounding answers in real documentation instead of the model's memory.
+
+```bash
+ask-flox                             # hosted Claude Code + the tool
+ask-flox qwen3-coder                 # a LOCAL model (via llamacpp launch) + the tool
+ask-flox qwen3-coder --big-context   # extra flags pass through to the harness
+```
+
+With no argument it runs hosted Claude Code; with a model it runs that model locally through `llamacpp launch claude`, passing the MCP config after `--`. Retrieval is fully local and offline — the index and its ONNX embedding model ship inside the `flox-labs/ask-flox` package, so no network or API key is needed for the retrieval itself.
+
+**Tool use requires a capable model.** Agentic tool-calling is emergent and only reliable around 7B+ tool-tuned models (e.g. `qwen3-coder` at `Q5_K_M`+). Small or heavily-quantized models (phi-2, SmolLM2) will ignore the tool or mis-fire it — a common symptom is the model prompting you with a menu instead of searching. Use a coder model for the local path.
+
 ## Model management
 
 ```bash
@@ -144,6 +158,7 @@ All components are published Flox packages installed via the manifest:
 | `flox-labs/vram-optimizer` | Rust crate | VRAM budget calculator for gpu_layers + ctx_size |
 | `flox-labs/llamacpp-proxy` | Rust crate | API translation proxy (Codex, Claude, Gemini, Ollama) |
 | `llamacpp-launchers` | This repo (.flox/pkgs/) | Shell wrapper for model management and harness launch |
+| `flox-labs/ask-flox` | [flox-labs](https://flox.dev) | Cited Flox-docs retrieval as an MCP tool (baked index + ONNX embedder) |
 
 The launcher is installed as both:
 - `$FLOX_ENV/share/llamacpp-launchers/llamacpp.sh` — sourced in `[profile]` for interactive shell functions
