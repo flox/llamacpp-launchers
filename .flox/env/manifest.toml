@@ -34,6 +34,18 @@ huggingface-hub.pkg-group = "huggingface-hub"
 curl.pkg-path = "curl"
 bat.pkg-path = "bat"
 
+# ask-flox: cited retrieval over the Flox docs + blog as an MCP tool.
+# flox-labs is a separate catalog page -> own pkg-group (cf. flox-cuda lesson).
+ask-flox.pkg-path = "flox-labs/ask-flox"
+ask-flox.pkg-group = "ask-flox"
+# Torch-free retrieval runtime. Pin python313 (deps are python313Packages, and
+# `python3` floats to 3.14); mcp + chromadb (brings onnxruntime) in own groups.
+python313.pkg-path = "python313"
+mcp.pkg-path = "python313Packages.mcp"
+mcp.pkg-group = "mcp"
+chromadb.pkg-path = "python313Packages.chromadb"
+chromadb.pkg-group = "chromadb"
+
 [vars]
 
 
@@ -76,20 +88,62 @@ on-activate = '''
 
   More: llamacpp help                                    readme
 
+  ask-flox                                               Claude Code (hosted) + cited Flox-docs retrieval
+  ask-flox qwen3-coder                                   same, but on a LOCAL model via llamacpp
+
 BANNER
+
+  # ask-flox: put the retrieval launcher on PATH and expose an MCP config.
+  # The launcher stages the read-only index to a writable cache, seeds the ONNX
+  # model, and runs the stdio server with this env's python313 (offline, no torch).
+  mkdir -p "$FLOX_ENV_CACHE/bin"
+  install -m755 "$FLOX_ENV/share/ask-flox/ask-flox-mcp" "$FLOX_ENV_CACHE/bin/ask-flox-mcp"
+  export PATH="$FLOX_ENV_CACHE/bin:$PATH"
+  cat > "$FLOX_ENV_CACHE/ask-flox.mcp.json" <<EOF
+{ "mcpServers": { "ask-flox": { "command": "ask-flox-mcp" } } }
+EOF
 '''
 
 [profile]
 bash = '''
   source "$FLOX_ENV/share/llamacpp-launchers/llamacpp.sh"
+  # ask-flox: Claude Code + the search_flox_docs tool.
+  #   ask-flox                -> hosted Claude
+  #   ask-flox <model>        -> LOCAL model via llamacpp (tool passed after --)
+  ask-flox() {
+    if [ -n "${1:-}" ]; then
+      llamacpp launch claude --model "$1" -- \
+        --mcp-config "$FLOX_ENV_CACHE/ask-flox.mcp.json" "${@:2}"
+    else
+      claude --mcp-config "$FLOX_ENV_CACHE/ask-flox.mcp.json"
+    fi
+  }
 '''
 zsh = '''
   function llamacpp() { command llamacpp "$@"; }
   function readme() { command llamacpp readme; }
+  # ask-flox: hosted Claude (no arg) or LOCAL model (ask-flox <model>) + the tool.
+  ask-flox() {
+    if [ -n "${1:-}" ]; then
+      llamacpp launch claude --model "$1" -- \
+        --mcp-config "$FLOX_ENV_CACHE/ask-flox.mcp.json" "${@:2}"
+    else
+      claude --mcp-config "$FLOX_ENV_CACHE/ask-flox.mcp.json"
+    fi
+  }
 '''
 fish = '''
   function readme --description "display llamacpp README"
     llamacpp readme
+  end
+  # ask-flox: hosted Claude (no arg) or LOCAL model (ask-flox <model>) + the tool.
+  function ask-flox
+    if test -n "$argv[1]"
+      llamacpp launch claude --model "$argv[1]" -- \
+        --mcp-config "$FLOX_ENV_CACHE/ask-flox.mcp.json" $argv[2..-1]
+    else
+      claude --mcp-config "$FLOX_ENV_CACHE/ask-flox.mcp.json"
+    end
   end
 '''
 
